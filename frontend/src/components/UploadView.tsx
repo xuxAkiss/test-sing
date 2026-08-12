@@ -19,9 +19,15 @@ interface UploadViewProps {
   mode: "song" | "performance";
   onFile: (file: File) => Promise<void> | void;
   onBack?: () => void;
+  backLabel?: string;
 }
 
-export function UploadView({ mode, onFile, onBack }: UploadViewProps) {
+export function UploadView({
+  mode,
+  onFile,
+  onBack,
+  backLabel = "返回歌曲",
+}: UploadViewProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -111,7 +117,7 @@ export function UploadView({ mode, onFile, onBack }: UploadViewProps) {
 
       {onBack ? (
         <button className="text-button upload-back" type="button" onClick={onBack}>
-          返回歌曲
+          {backLabel}
         </button>
       ) : null}
 

@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { assetUrl } from "../api/client";
 import type { ReferencePitchResponse, SongResponse } from "../types";
+import { displaySongTitle } from "../utils/songTitle";
 import { AudioPlayer } from "./AudioPlayer";
 import { CheckIcon, LockIcon } from "./Icons";
 import { PitchTimeline } from "./PitchTimeline";
@@ -26,7 +27,7 @@ export function SongWorkspace({
     <main className="song-workspace">
       <aside className="song-controls">
         <div className="song-heading">
-          <h1>{song.title}</h1>
+          <h1>{displaySongTitle(song.title)}</h1>
           <p className="ready-status">
             <CheckIcon />
             伴奏与音调线已生成

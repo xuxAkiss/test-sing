@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 
-import type { ReferencePitchResponse } from "../types";
+import type { LivePitchPoint, ReferencePitchResponse } from "../types";
 
 const WIDTH = 1000;
-const HEIGHT = 560;
+const DEFAULT_HEIGHT = 560;
+const LIVE_HEIGHT = 900;
 const LABEL_WIDTH = 72;
 const TOP = 50;
 const RIGHT = 24;
@@ -13,6 +14,8 @@ const WINDOW_SECONDS = 20;
 interface PitchTimelineProps {
   pitch: ReferencePitchResponse;
   currentTime: number;
+  userPitch?: LivePitchPoint[];
+  live?: boolean;
 }
 
 interface PitchSegment {
@@ -21,10 +24,16 @@ interface PitchSegment {
   midi: number;
 }
 
-export function PitchTimeline({ pitch, currentTime }: PitchTimelineProps) {
+export function PitchTimeline({
+  pitch,
+  currentTime,
+  userPitch = [],
+  live = false,
+}: PitchTimelineProps) {
+  const height = live ? LIVE_HEIGHT : DEFAULT_HEIGHT;
   const totalDuration = Math.max(pitch.duration_seconds, WINDOW_SECONDS);
   const windowStart = Math.min(
-    Math.max(0, currentTime - 6),
+    Math.max(0, currentTime - (live ? 10 : 6)),
     Math.max(0, totalDuration - WINDOW_SECONDS),
   );
   const windowEnd = Math.min(totalDuration, windowStart + WINDOW_SECONDS);
@@ -35,12 +44,35 @@ export function PitchTimeline({ pitch, currentTime }: PitchTimelineProps) {
     [pitch, windowEnd, windowStart],
   );
   const plotWidth = WIDTH - LABEL_WIDTH - RIGHT;
-  const plotHeight = HEIGHT - TOP - BOTTOM;
+  const plotHeight = height - TOP - BOTTOM;
   const x = (seconds: number): number =>
     LABEL_WIDTH + ((seconds - windowStart) / windowDuration) * plotWidth;
   const y = (midi: number): number =>
     TOP + ((midiMaximum - midi) / (midiMaximum - midiMinimum)) * plotHeight;
   const playhead = x(Math.min(Math.max(currentTime, windowStart), windowEnd));
+  const userPaths = useMemo(
+    () =>
+      buildUserPitchPaths(
+        userPitch,
+        windowStart,
+        windowEnd,
+        midiMinimum,
+        midiMaximum,
+        plotWidth,
+        plotHeight,
+        windowDuration,
+      ),
+    [
+      midiMaximum,
+      midiMinimum,
+      plotHeight,
+      plotWidth,
+      userPitch,
+      windowDuration,
+      windowEnd,
+      windowStart,
+    ],
+  );
   const noteRows = noteRowValues(midiMinimum, midiMaximum);
   const timeTicks = Array.from({ length: 5 }, (_, index) => {
     const time = windowStart + (windowDuration * index) / 4;
@@ -48,17 +80,25 @@ export function PitchTimeline({ pitch, currentTime }: PitchTimelineProps) {
   });
 
   return (
-    <div className="pitch-timeline">
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label="参考音调线">
-        <title>参考音调线，播放指针随伴奏移动</title>
-        <rect width={WIDTH} height={HEIGHT} className="timeline-background" />
+    <div className={`pitch-timeline${live ? " is-live" : ""}`}>
+      <svg
+        viewBox={`0 0 ${WIDTH} ${height}`}
+        role="img"
+        aria-label={live ? "实时演唱音调线" : "参考音调线"}
+      >
+        <title>
+          {live
+            ? "青色为参考音调，珊瑚色为你的实时音高"
+            : "参考音调线，播放指针随伴奏移动"}
+        </title>
+        <rect width={WIDTH} height={height} className="timeline-background" />
         {timeTicks.map((tick) => (
           <g key={tick.time}>
             <line
               x1={round(tick.x)}
               y1={TOP}
               x2={round(tick.x)}
-              y2={HEIGHT - BOTTOM}
+              y2={height - BOTTOM}
               className="time-grid-line"
             />
             <text x={round(tick.x)} y={28} className="time-label">
@@ -84,7 +124,7 @@ export function PitchTimeline({ pitch, currentTime }: PitchTimelineProps) {
           const segmentY = round(y(segment.midi));
           const startX = round(x(segment.start));
           const endX = round(x(segment.end));
-          if (segment.end <= currentTime) {
+          if (segment.end <= currentTime || live) {
             return [
               <line
                 key={`${index}-past`}
@@ -127,17 +167,75 @@ export function PitchTimeline({ pitch, currentTime }: PitchTimelineProps) {
             />,
           ];
         })}
+        {userPaths.map((path, index) => (
+          <path
+            key={`${path}-${index}`}
+            d={path}
+            className="user-pitch-path"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
         <line
           x1={round(playhead)}
           y1={TOP - 8}
           x2={round(playhead)}
-          y2={HEIGHT - BOTTOM}
+          y2={height - BOTTOM}
           className="timeline-playhead"
         />
         <circle cx={round(playhead)} cy={TOP - 8} r={7} className="playhead-handle" />
       </svg>
+      {live ? (
+        <div className="live-pitch-legend" aria-hidden="true">
+          <span><i className="reference-key" />参考音调</span>
+          <span><i className="user-key" />你的音高</span>
+        </div>
+      ) : null}
     </div>
   );
+}
+
+function buildUserPitchPaths(
+  points: LivePitchPoint[],
+  windowStart: number,
+  windowEnd: number,
+  midiMinimum: number,
+  midiMaximum: number,
+  plotWidth: number,
+  plotHeight: number,
+  windowDuration: number,
+): string[] {
+  const paths: string[] = [];
+  let current: string[] = [];
+  let lastTime: number | null = null;
+  const flush = (): void => {
+    if (current.length >= 2) {
+      paths.push(current.join(" "));
+    }
+    current = [];
+    lastTime = null;
+  };
+
+  for (const point of points) {
+    if (
+      point.midi === null ||
+      !Number.isFinite(point.midi) ||
+      point.time < windowStart ||
+      point.time > windowEnd ||
+      point.midi < midiMinimum - 1 ||
+      point.midi > midiMaximum + 1 ||
+      (lastTime !== null && point.time - lastTime > 0.24)
+    ) {
+      flush();
+      continue;
+    }
+    const pointX = LABEL_WIDTH + ((point.time - windowStart) / windowDuration) * plotWidth;
+    const pointY =
+      TOP + ((midiMaximum - point.midi) / (midiMaximum - midiMinimum)) * plotHeight;
+    current.push(`${current.length === 0 ? "M" : "L"}${round(pointX)},${round(pointY)}`);
+    lastTime = point.time;
+  }
+  flush();
+  return paths;
 }
 
 function buildSegments(

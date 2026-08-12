@@ -47,6 +47,11 @@ export interface ReferencePitchResponse {
   frames: Array<number | null>;
 }
 
+export interface LivePitchPoint {
+  time: number;
+  midi: number | null;
+}
+
 export interface ScoreResponse {
   overall: number;
   pitch: number;

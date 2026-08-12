@@ -1,5 +1,6 @@
 import { AppHeader } from "./components/AppHeader";
 import { ErrorView } from "./components/ErrorView";
+import { PerformanceEntry } from "./components/PerformanceEntry";
 import { ProcessingView } from "./components/ProcessingView";
 import { ScoreView } from "./components/ScoreView";
 import { SongWorkspace } from "./components/SongWorkspace";
@@ -35,11 +36,11 @@ export function App() {
           onChangeSong={workflow.resetSong}
         />
       ) : null}
-      {workflow.phase === "performance-select" ? (
-        <UploadView
-          mode="performance"
-          onFile={workflow.submitPerformanceFile}
-          onBack={workflow.backToSong}
+      {workflow.phase === "performance-select" && workflow.song && workflow.pitch ? (
+        <PerformanceEntry
+          song={workflow.song}
+          pitch={workflow.pitch}
+          onRecording={workflow.submitPerformanceFile}
         />
       ) : null}
       {workflow.phase === "performance-uploading" ||

@@ -68,3 +68,22 @@ export function BackIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+export function MicrophoneIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 48 48" aria-hidden="true">
+      <rect x="17" y="5" width="14" height="27" rx="7" />
+      <path d="M11 24a13 13 0 0 0 26 0M24 37v7M17 44h14" />
+    </svg>
+  );
+}
+
+export function MusicNoteIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9 18V6l10-2v12" />
+      <ellipse cx="6" cy="18" rx="3" ry="2.4" />
+      <ellipse cx="16" cy="16" rx="3" ry="2.4" />
+    </svg>
+  );
+}
