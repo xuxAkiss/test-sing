@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "karaoke-pitch-lab"
-version = "0.1.0"
+version = "0.2.0"
 description = "An explainable singing pitch analysis prototype"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -19,12 +19,20 @@ media = [
 separation = [
   "demucs>=4.1,<5",
 ]
+web = [
+  "fastapi>=0.115,<1",
+  "python-multipart>=0.0.9,<1",
+  "uvicorn>=0.30,<1",
+]
+test = [
+  "httpx2>=2,<3",
+]
 
 [project.scripts]
 karaoke-analyze = "audio_engine.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["audio_engine*"]
+include = ["audio_engine*", "backend*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

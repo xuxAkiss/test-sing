@@ -1,6 +1,6 @@
 # Karaoke Pitch Lab
 
-这是一个从零构建的智能 K 歌评分项目。当前里程碑先完成一个可运行、可测试的音高评分基线：输入参考人声 WAV 和用户演唱 WAV，输出音高轨迹、对齐信息、分项评分与 SVG 对比图。
+这是一个从零构建的智能 K 歌评分项目。当前已经完成可运行、可测试的音频评分引擎和本地 Web API：上传原唱后生成伴奏与参考音调线，再上传用户演唱并输出 DTW 对齐、分项评分与 SVG 对比图。
 
 ## 当前能力
 
@@ -13,9 +13,11 @@
 - 输出音准、节奏、完整度、稳定性和总分
 - 生成无需绘图库的 SVG 音高对比图
 - 使用 Demucs 从原唱和外放伴奏手机录音中提取人声
+- FastAPI 上传、任务进度、伴奏、参考音调线和演唱评分接口
+- D 盘本地任务存储、上传限制、重复歌曲缓存和失败恢复
 - 使用合成旋律完成可重复的自动测试
 
-当前版本已经完成离线音频引擎验证；浏览器上传、任务队列和实时音调线属于后续里程碑。规则分数仍是工程 baseline，尚未使用人工评分数据校准。
+当前版本已经完成离线音频引擎和后端 API 验证；手机前端与实时音调线属于后续里程碑。规则分数仍是工程 baseline，尚未使用人工评分数据校准。
 
 ## 环境要求
 
@@ -92,14 +94,32 @@ powershell -ExecutionPolicy Bypass -File scripts/install_separation.ps1 -Compute
   --device cpu
 ```
 
+## 启动 Web API
+
+安装 Web 和测试依赖，所有内容仍位于 D 盘项目虚拟环境：
+
+```powershell
+.venv\Scripts\python -m pip install --no-cache-dir -e ".[web,test]"
+```
+
+启动局域网 API：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run_backend.ps1
+```
+
+电脑访问 `http://127.0.0.1:8000/docs` 即可通过交互式文档上传歌曲。手机与电脑在同一局域网时，使用电脑的局域网 IP 和端口 `8000`。
+
 面向手机的客户端/服务端职责划分见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
 三首真实录音的 DTW 复评结果与可信度限制见 [docs/EXPERIMENT_004_DTW_SCORING.md](docs/EXPERIMENT_004_DTW_SCORING.md)。
 
+Web API、数据目录、接口与端到端测试说明见 [docs/WEB_MVP_BACKEND.md](docs/WEB_MVP_BACKEND.md)。
+
 运行测试：
 
 ```powershell
-python -m unittest discover -s tests -v
+.venv\Scripts\python -m unittest discover -s tests -v
 ```
 
 ## 评分说明

@@ -12,6 +12,8 @@ build/
 output/
 demo_output/
 artifacts/
+data/
 myvoice/
 reference/
+.env
 .DS_Store
