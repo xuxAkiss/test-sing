@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.vendor/
+.tmp/
+.model_cache/
+dist/
+build/
+*.egg-info/
+output/
+demo_output/
+artifacts/
+myvoice/
+reference/
+.DS_Store

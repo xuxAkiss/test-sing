@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "karaoke-pitch-lab"
+version = "0.1.0"
+description = "An explainable singing pitch analysis prototype"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+media = [
+  "imageio-ffmpeg>=0.5",
+]
+separation = [
+  "demucs>=4.1,<5",
+]
+
+[project.scripts]
+karaoke-analyze = "audio_engine.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["audio_engine*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
