@@ -1,6 +1,6 @@
 # Karaoke Pitch Lab
 
-这是一个从零构建的智能 K 歌评分项目。当前已经完成可运行、可测试的音频评分引擎和本地 Web API：上传原唱后生成伴奏与参考音调线，再上传用户演唱并输出 DTW 对齐、分项评分与 SVG 对比图。
+这是一个从零构建的智能 K 歌评分项目。当前已经完成可运行、可测试的音频评分引擎、本地 Web API 和响应式 Web 客户端：上传原唱后生成伴奏与参考音调线，再上传用户演唱并输出 DTW 对齐、分项评分与 SVG 对比图。
 
 ## 当前能力
 
@@ -15,14 +15,18 @@
 - 使用 Demucs 从原唱和外放伴奏手机录音中提取人声
 - FastAPI 上传、任务进度、伴奏、参考音调线和演唱评分接口
 - D 盘本地任务存储、上传限制、重复歌曲缓存和失败恢复
+- React + TypeScript 手机优先界面、伴奏播放器和滚动音调线
+- 歌曲处理进度、演唱上传、评分指标与音高对比图完整流程
 - 使用合成旋律完成可重复的自动测试
 
-当前版本已经完成离线音频引擎和后端 API 验证；手机前端与实时音调线属于后续里程碑。规则分数仍是工程 baseline，尚未使用人工评分数据校准。
+当前版本已经完成离线音频引擎、后端 API 和手机优先 Web MVP 验证。音调线会跟随伴奏播放位置移动；录音时的实时音高检测仍属于后续里程碑。规则分数仍是工程 baseline，尚未使用人工评分数据校准。
 
 ## 环境要求
 
 - Python 3.11 或更高版本
 - NumPy 1.26 或更高版本
+- Node.js 22 或更高版本（仅 Web 客户端）
+- pnpm 11 或更高版本（仅 Web 客户端）
 
 ## 快速体验
 
@@ -94,7 +98,7 @@ powershell -ExecutionPolicy Bypass -File scripts/install_separation.ps1 -Compute
   --device cpu
 ```
 
-## 启动 Web API
+## 启动 Web 应用
 
 安装 Web 和测试依赖，所有内容仍位于 D 盘项目虚拟环境：
 
@@ -108,13 +112,30 @@ powershell -ExecutionPolicy Bypass -File scripts/install_separation.ps1 -Compute
 powershell -ExecutionPolicy Bypass -File scripts/run_backend.ps1
 ```
 
-电脑访问 `http://127.0.0.1:8000/docs` 即可通过交互式文档上传歌曲。手机与电脑在同一局域网时，使用电脑的局域网 IP 和端口 `8000`。
+另开一个终端安装并启动前端：
+
+```powershell
+pnpm --dir frontend install
+pnpm --dir frontend dev
+```
+
+电脑打开 `http://127.0.0.1:5173` 使用完整界面；`http://127.0.0.1:8000/docs` 是 API 交互文档。手机与电脑在同一局域网时，访问 `http://电脑的局域网IP:5173`。
+
+前端工程检查：
+
+```powershell
+pnpm --dir frontend lint
+pnpm --dir frontend test
+pnpm --dir frontend build
+```
 
 面向手机的客户端/服务端职责划分见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
 三首真实录音的 DTW 复评结果与可信度限制见 [docs/EXPERIMENT_004_DTW_SCORING.md](docs/EXPERIMENT_004_DTW_SCORING.md)。
 
 Web API、数据目录、接口与端到端测试说明见 [docs/WEB_MVP_BACKEND.md](docs/WEB_MVP_BACKEND.md)。
+
+Web 客户端状态流、组件划分与浏览器验收说明见 [docs/WEB_MVP_FRONTEND.md](docs/WEB_MVP_FRONTEND.md)。
 
 运行测试：
 

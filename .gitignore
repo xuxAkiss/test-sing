@@ -16,4 +16,10 @@ data/
 myvoice/
 reference/
 .env
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/.env.local
+.pnpm-store/
+.playwright-browsers/
 .DS_Store
