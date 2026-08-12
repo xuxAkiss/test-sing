@@ -5,11 +5,9 @@ import type {
   SongResponse,
   SubmissionResponse,
 } from "../types";
+import { resolveApiBaseUrl } from "./runtimeConfig";
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(
-  /\/$/,
-  "",
-) ?? "";
+const API_BASE = resolveApiBaseUrl();
 
 export class ApiError extends Error {
   constructor(

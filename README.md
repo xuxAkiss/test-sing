@@ -160,3 +160,5 @@ Web 客户端状态流、组件划分与浏览器验收说明见 [docs/WEB_MVP_F
 ## 路线图
 
 详细阶段和验收标准见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+
+GitHub Pages 与本地 HTTPS 后端的手机测试步骤见 [docs/GITHUB_PAGES_GUIDE.md](docs/GITHUB_PAGES_GUIDE.md)。

@@ -123,11 +123,18 @@ class BackendApiTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/jobs/missing").status_code, 404)
         self.assertEqual(self.client.get("/api/songs/missing").status_code, 404)
 
-    def test_cors_allows_private_lan_frontend_but_not_public_origin(self) -> None:
-        allowed = self.client.options(
+    def test_cors_allows_lan_and_github_pages_but_not_public_origin(self) -> None:
+        allowed_lan = self.client.options(
             "/api/health",
             headers={
                 "Origin": "http://192.168.1.20:5173",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        allowed_pages = self.client.options(
+            "/api/health",
+            headers={
+                "Origin": "https://xuxakiss.github.io",
                 "Access-Control-Request-Method": "GET",
             },
         )
@@ -139,10 +146,15 @@ class BackendApiTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(allowed_lan.status_code, 200)
         self.assertEqual(
-            allowed.headers["access-control-allow-origin"],
+            allowed_lan.headers["access-control-allow-origin"],
             "http://192.168.1.20:5173",
+        )
+        self.assertEqual(allowed_pages.status_code, 200)
+        self.assertEqual(
+            allowed_pages.headers["access-control-allow-origin"],
+            "https://xuxakiss.github.io",
         )
         self.assertEqual(denied.status_code, 400)
 
