@@ -16,7 +16,7 @@ data/
 └── performances/   # 演唱录音、分离结果和评分报告
 ```
 
-接口只返回资源 URL，不暴露服务器绝对文件路径。上传采用分块写入并计算 SHA-256；相同原唱处理成功后再次上传会直接命中缓存。
+接口只返回资源 URL，不暴露服务器绝对文件路径。上传采用分块写入并计算 SHA-256；相同原唱处理成功后再次上传会直接命中缓存。参考音调版本升级时，旧缓存会自动跳过并重新生成。
 
 默认允许来自 localhost 和私有局域网地址的浏览器开发页面跨域访问，但拒绝公网来源。需要自定义时可设置 `KARAOKE_CORS_ORIGIN_REGEX`。
 
@@ -33,6 +33,10 @@ data/
 | POST | `/api/songs/{song_id}/performances` | 上传一次用户演唱 |
 | GET | `/api/performances/{performance_id}` | 获取分项评分和结果 URL |
 | GET | `/api/performances/{performance_id}/comparison` | 获取音调对比 SVG |
+
+演唱上传使用 `multipart/form-data`。完整演唱只提交 `file`；片段演唱额外同时提交 `segment_start_seconds` 与 `segment_end_seconds`。后端会校验片段至少 5 秒且不超出歌曲时长，然后裁出完全相同范围的原唱人声再进行 DTW 与完整度评分。
+
+`/api/songs/{song_id}/pitch` 的版本 2 数据带有 `source: "separated_original_vocals"`，只从分离后的原唱人声轨提取，并移除低可信或不足 100 毫秒的零碎音高段。
 
 ## 启动
 

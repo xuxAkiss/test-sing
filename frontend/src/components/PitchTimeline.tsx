@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
 import type { LivePitchPoint, ReferencePitchResponse } from "../types";
+import { centeredPitchRange } from "../utils/pitchView";
 
 const WIDTH = 1000;
 const DEFAULT_HEIGHT = 560;
@@ -15,6 +16,8 @@ interface PitchTimelineProps {
   pitch: ReferencePitchResponse;
   currentTime: number;
   userPitch?: LivePitchPoint[];
+  rangeStart?: number;
+  rangeEnd?: number;
   live?: boolean;
 }
 
@@ -28,17 +31,25 @@ export function PitchTimeline({
   pitch,
   currentTime,
   userPitch = [],
+  rangeStart = 0,
+  rangeEnd = pitch.duration_seconds,
   live = false,
 }: PitchTimelineProps) {
   const height = live ? LIVE_HEIGHT : DEFAULT_HEIGHT;
-  const totalDuration = Math.max(pitch.duration_seconds, WINDOW_SECONDS);
+  const sessionStart = Math.max(0, rangeStart);
+  const sessionEnd = Math.max(sessionStart + 0.01, rangeEnd);
+  const visibleSeconds = Math.min(WINDOW_SECONDS, sessionEnd - sessionStart);
   const windowStart = Math.min(
-    Math.max(0, currentTime - (live ? 10 : 6)),
-    Math.max(0, totalDuration - WINDOW_SECONDS),
+    Math.max(sessionStart, currentTime - (live ? 10 : 6)),
+    Math.max(sessionStart, sessionEnd - visibleSeconds),
   );
-  const windowEnd = Math.min(totalDuration, windowStart + WINDOW_SECONDS);
+  const windowEnd = Math.min(sessionEnd, windowStart + visibleSeconds);
   const windowDuration = Math.max(1, windowEnd - windowStart);
-  const [midiMinimum, midiMaximum] = pitchRange(pitch);
+  const [midiMinimum, midiMaximum] = centeredPitchRange(
+    pitch,
+    windowStart,
+    windowEnd,
+  );
   const segments = useMemo(
     () => buildSegments(pitch, windowStart, windowEnd),
     [pitch, windowEnd, windowStart],
@@ -84,12 +95,12 @@ export function PitchTimeline({
       <svg
         viewBox={`0 0 ${WIDTH} ${height}`}
         role="img"
-        aria-label={live ? "实时演唱音调线" : "参考音调线"}
+        aria-label={live ? "实时演唱音调线" : "原唱人声音调线"}
       >
         <title>
           {live
-            ? "青色为参考音调，珊瑚色为你的实时音高"
-            : "参考音调线，播放指针随伴奏移动"}
+            ? "青色为原唱人声音调，珊瑚色为你的实时音高"
+            : "从分离后的原唱人声提取的音调线，播放指针随伴奏移动"}
         </title>
         <rect width={WIDTH} height={height} className="timeline-background" />
         {timeTicks.map((tick) => (
@@ -186,7 +197,7 @@ export function PitchTimeline({
       </svg>
       {live ? (
         <div className="live-pitch-legend" aria-hidden="true">
-          <span><i className="reference-key" />参考音调</span>
+          <span><i className="reference-key" />原唱音调</span>
           <span><i className="user-key" />你的音高</span>
         </div>
       ) : null}
@@ -289,22 +300,6 @@ function buildSegments(
   }
   flush();
   return segments;
-}
-
-function pitchRange(pitch: ReferencePitchResponse): [number, number] {
-  let minimum = pitch.minimum_midi ?? 48;
-  let maximum = pitch.maximum_midi ?? 72;
-  if (maximum - minimum < 12) {
-    const middle = (minimum + maximum) / 2;
-    minimum = middle - 6;
-    maximum = middle + 6;
-  }
-  if (maximum - minimum > 24) {
-    const middle = (minimum + maximum) / 2;
-    minimum = middle - 12;
-    maximum = middle + 12;
-  }
-  return [Math.floor(minimum) - 1, Math.ceil(maximum) + 1];
 }
 
 function noteRowValues(minimum: number, maximum: number): number[] {

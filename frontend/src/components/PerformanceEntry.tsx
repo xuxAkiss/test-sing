@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { assetUrl } from "../api/client";
 import {
@@ -8,23 +8,25 @@ import {
 import type {
   LivePitchPoint,
   ReferencePitchResponse,
+  SingingMode,
+  SingingSelection,
   SongResponse,
 } from "../types";
 import { displaySongTitle } from "../utils/songTitle";
-import { MicrophoneIcon, MusicNoteIcon, PauseIcon } from "./Icons";
+import { suggestSegmentRange } from "../utils/singingRange";
+import { MusicNoteIcon, PauseIcon } from "./Icons";
 import { PitchTimeline } from "./PitchTimeline";
+import { SingingModeSelector } from "./SingingModeSelector";
 import { UploadView } from "./UploadView";
 
 interface PerformanceEntryProps {
   song: SongResponse;
   pitch: ReferencePitchResponse;
-  onRecording: (recording: File) => Promise<void> | void;
+  onRecording: (
+    recording: File,
+    selection: SingingSelection,
+  ) => Promise<void> | void;
 }
-
-const WAVEFORM_HEIGHTS = [
-  4, 7, 12, 21, 35, 20, 13, 25, 31, 18, 10, 27, 37, 28, 15, 7, 18, 32,
-  22, 12, 6, 14, 28, 38, 24, 17, 9, 5,
-];
 
 export function PerformanceEntry({
   song,
@@ -32,6 +34,21 @@ export function PerformanceEntry({
   onRecording,
 }: PerformanceEntryProps) {
   const [uploadFallback, setUploadFallback] = useState(false);
+  const [mode, setMode] = useState<SingingMode>("full");
+  const songDuration = Math.max(
+    0.01,
+    song.duration_seconds ?? pitch.duration_seconds,
+  );
+  const [segmentSelection, setSegmentSelection] = useState<SingingSelection>(() =>
+    suggestSegmentRange(pitch, songDuration),
+  );
+  const selection = useMemo<SingingSelection>(
+    () =>
+      mode === "full"
+        ? { mode: "full", startSeconds: 0, endSeconds: songDuration }
+        : { ...segmentSelection, mode: "segment" },
+    [mode, segmentSelection, songDuration],
+  );
   const accompaniment = song.resources?.accompaniment;
   const {
     audioRef,
@@ -44,15 +61,17 @@ export function PerformanceEntry({
     stop,
     updateDuration,
   } = useLivePerformance({
-    fallbackDuration: song.duration_seconds ?? pitch.duration_seconds,
-    onComplete: onRecording,
+    fallbackDuration: songDuration,
+    rangeStartSeconds: selection.startSeconds,
+    rangeEndSeconds: selection.endSeconds,
+    onComplete: (recording) => onRecording(recording, selection),
   });
 
   if (uploadFallback) {
     return (
       <UploadView
         mode="performance"
-        onFile={onRecording}
+        onFile={(recording) => onRecording(recording, selection)}
         onBack={() => setUploadFallback(false)}
         backLabel="返回实时演唱"
       />
@@ -82,14 +101,24 @@ export function PerformanceEntry({
           currentTime={currentTime}
           duration={duration}
           pitchPoints={pitchPoints}
+          selection={selection}
           onStop={stop}
         />
       ) : (
         <MicrophonePreflight
+          song={song}
+          pitch={pitch}
+          mode={mode}
+          selection={selection}
+          songDuration={songDuration}
           requesting={status === "requesting"}
           error={error ?? getLiveRecordingSupportIssue()}
           onStart={() => void start()}
           onUpload={() => setUploadFallback(true)}
+          onModeChange={setMode}
+          onRangeChange={(startSeconds, endSeconds) =>
+            setSegmentSelection({ mode: "segment", startSeconds, endSeconds })
+          }
         />
       )}
     </>
@@ -97,38 +126,46 @@ export function PerformanceEntry({
 }
 
 interface MicrophonePreflightProps {
+  song: SongResponse;
+  pitch: ReferencePitchResponse;
+  mode: SingingMode;
+  selection: SingingSelection;
+  songDuration: number;
   requesting: boolean;
   error: string | null;
   onStart: () => void;
   onUpload: () => void;
+  onModeChange: (mode: SingingMode) => void;
+  onRangeChange: (startSeconds: number, endSeconds: number) => void;
 }
 
 function MicrophonePreflight({
+  song,
+  pitch,
+  mode,
+  selection,
+  songDuration,
   requesting,
   error,
   onStart,
   onUpload,
+  onModeChange,
+  onRangeChange,
 }: MicrophonePreflightProps) {
   const unsupported = getLiveRecordingSupportIssue() !== null;
   return (
-    <main className="microphone-preflight">
-      <h1>准备开始演唱</h1>
-      <div className="microphone-visual" aria-hidden="true">
-        <div className="microphone-rings" />
-        <div className="microphone-waveform">
-          {WAVEFORM_HEIGHTS.map((height, index) => (
-            <span
-              key={`${height}-${index}`}
-              className={index === 14 || index === 21 ? "is-cyan" : undefined}
-              style={{ height }}
-            />
-          ))}
-        </div>
-        <MicrophoneIcon />
-      </div>
-      <p className="microphone-explanation">
-        需要使用麦克风实时识别音高并录制本次演唱
-      </p>
+    <main className="microphone-preflight performance-setup">
+      <header className="performance-setup-heading">
+        <h1>{displaySongTitle(song.title)}</h1>
+      </header>
+      <SingingModeSelector
+        mode={mode}
+        pitch={pitch}
+        selection={selection}
+        songDuration={songDuration}
+        onModeChange={onModeChange}
+        onRangeChange={onRangeChange}
+      />
       {error ? (
         <p className="microphone-error" role="alert">
           {error}
@@ -147,6 +184,9 @@ function MicrophonePreflight({
           上传已有录音
         </button>
       </div>
+      <p className="microphone-explanation">
+        麦克风会实时识别你的音高，并录制本次演唱用于评分
+      </p>
       <p className="microphone-advice">
         建议佩戴耳机，或将手机远离外放音箱
       </p>
@@ -161,6 +201,7 @@ interface LiveSingingScreenProps {
   currentTime: number;
   duration: number;
   pitchPoints: LivePitchPoint[];
+  selection: SingingSelection;
   onStop: () => Promise<void>;
 }
 
@@ -171,34 +212,42 @@ function LiveSingingScreen({
   currentTime,
   duration,
   pitchPoints,
+  selection,
   onStop,
 }: LiveSingingScreenProps) {
-  const progress = Math.min(100, (currentTime / Math.max(0.01, duration)) * 100);
+  const effectiveEnd = Math.min(selection.endSeconds, duration);
+  const sessionDuration = Math.max(0.01, effectiveEnd - selection.startSeconds);
+  const elapsed = Math.max(0, currentTime - selection.startSeconds);
+  const progress = Math.min(100, (elapsed / sessionDuration) * 100);
   return (
     <main className="live-singing-screen">
       <header className="live-song-heading">
         <h1>{displaySongTitle(song.title)}</h1>
         <p>
           <span className="recording-dot" aria-hidden="true" />
-          正在演唱
-          <time>{formatTime(currentTime)}</time>
+          {selection.mode === "segment" ? "片段演唱" : "完整演唱"}
+          <time>
+            {formatTime(currentTime)} / {formatTime(effectiveEnd)}
+          </time>
         </p>
       </header>
       <PitchTimeline
         pitch={pitch}
         currentTime={currentTime}
         userPitch={pitchPoints}
+        rangeStart={selection.startSeconds}
+        rangeEnd={effectiveEnd}
         live
       />
       <div className="live-accompaniment">
         <span className="live-pause-icon" aria-hidden="true">
           <PauseIcon />
         </span>
-        <time>{formatTime(currentTime)}</time>
+        <time>{formatTime(elapsed)}</time>
         <div className="live-progress-track" aria-hidden="true">
           <span style={{ width: `${progress}%` }} />
         </div>
-        <time>{formatTime(duration)}</time>
+        <time>{formatTime(sessionDuration)}</time>
       </div>
       <button
         className="primary-button live-stop-button"

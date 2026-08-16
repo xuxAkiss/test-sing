@@ -38,6 +38,7 @@ export interface SongResponse {
 
 export interface ReferencePitchResponse {
   schema_version: number;
+  source?: "separated_original_vocals" | null;
   start_seconds: number;
   hop_seconds: number;
   duration_seconds: number;
@@ -50,6 +51,14 @@ export interface ReferencePitchResponse {
 export interface LivePitchPoint {
   time: number;
   midi: number | null;
+}
+
+export type SingingMode = "full" | "segment";
+
+export interface SingingSelection {
+  mode: SingingMode;
+  startSeconds: number;
+  endSeconds: number;
 }
 
 export interface ScoreResponse {
@@ -70,6 +79,8 @@ export interface PerformanceResponse {
   status: ResourceStatus;
   score: ScoreResponse | null;
   separation_seconds: number | null;
+  segment_start_seconds: number | null;
+  segment_end_seconds: number | null;
   error: string | null;
   comparison_url: string | null;
 }

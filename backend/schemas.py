@@ -76,6 +76,8 @@ class PerformanceResponse(BaseModel):
     status: ResourceStatus
     score: ScoreResponse | None
     separation_seconds: float | None
+    segment_start_seconds: float | None
+    segment_end_seconds: float | None
     error: str | None
     created_at: str
     updated_at: str
@@ -84,6 +86,7 @@ class PerformanceResponse(BaseModel):
 
 class ReferencePitchResponse(BaseModel):
     schema_version: int
+    source: Literal["separated_original_vocals"] | None = None
     start_seconds: float
     hop_seconds: float = Field(gt=0.0)
     duration_seconds: float = Field(ge=0.0)

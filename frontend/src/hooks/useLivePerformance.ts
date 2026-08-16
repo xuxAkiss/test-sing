@@ -6,6 +6,8 @@ type LiveSessionStatus = "preflight" | "requesting" | "recording" | "stopping";
 
 interface UseLivePerformanceOptions {
   fallbackDuration: number;
+  rangeStartSeconds: number;
+  rangeEndSeconds: number;
   onComplete: (recording: File) => Promise<void> | void;
 }
 
@@ -30,6 +32,8 @@ const VISIBLE_PITCH_SECONDS = 22;
 
 export function useLivePerformance({
   fallbackDuration,
+  rangeStartSeconds,
+  rangeEndSeconds,
   onComplete,
 }: UseLivePerformanceOptions): LivePerformanceSession {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -43,9 +47,11 @@ export function useLivePerformance({
   const stopActionRef = useRef<Promise<void> | null>(null);
   const statusRef = useRef<LiveSessionStatus>("preflight");
   const mountedRef = useRef(true);
+  const rangeStartRef = useRef(rangeStartSeconds);
+  const onCompleteRef = useRef(onComplete);
   const [status, setStatus] = useState<LiveSessionStatus>("preflight");
   const [error, setError] = useState<string | null>(null);
-  const [currentTime, setCurrentTime] = useState(0);
+  const [currentTime, setCurrentTime] = useState(rangeStartSeconds);
   const [duration, setDuration] = useState(fallbackDuration);
   const [pitchPoints, setPitchPoints] = useState<LivePitchPoint[]>([]);
   const [currentMidi, setCurrentMidi] = useState<number | null>(null);
@@ -54,6 +60,17 @@ export function useLivePerformance({
     statusRef.current = nextStatus;
     setStatus(nextStatus);
   }, []);
+
+  useEffect(() => {
+    rangeStartRef.current = rangeStartSeconds;
+    if (statusRef.current === "preflight") {
+      setCurrentTime(rangeStartSeconds);
+    }
+  }, [rangeStartSeconds]);
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
   const cancelAnalysis = useCallback((): void => {
     if (animationFrameRef.current !== null) {
@@ -118,7 +135,10 @@ export function useLivePerformance({
         setCurrentTime(playbackTime);
         setCurrentMidi(midi);
         setPitchPoints((current) => {
-          const cutoff = Math.max(0, playbackTime - VISIBLE_PITCH_SECONDS);
+          const cutoff = Math.max(
+            rangeStartRef.current,
+            playbackTime - VISIBLE_PITCH_SECONDS,
+          );
           const visible = current.filter((point) => point.time >= cutoff);
           return [...visible, { time: playbackTime, midi }];
         });
@@ -145,7 +165,7 @@ export function useLivePerformance({
     setError(null);
     setPitchPoints([]);
     setCurrentMidi(null);
-    setCurrentTime(0);
+    setCurrentTime(rangeStartRef.current);
     changeStatus("requesting");
 
     let stream: MediaStream | null = null;
@@ -213,7 +233,7 @@ export function useLivePerformance({
         );
       });
 
-      audio.currentTime = 0;
+      audio.currentTime = rangeStartRef.current;
       recorder.start(1_000);
       await audio.play();
       changeStatus("recording");
@@ -253,13 +273,13 @@ export function useLivePerformance({
       }
       const recording = await recordingResult;
       releaseMedia();
-      await onComplete(recording);
+      await onCompleteRef.current(recording);
     } catch (reason) {
       releaseMedia();
       changeStatus("preflight");
       setError(microphoneErrorMessage(reason));
     }
-  }, [cancelAnalysis, changeStatus, onComplete, releaseMedia]);
+  }, [cancelAnalysis, changeStatus, releaseMedia]);
 
   const stop = useCallback(async (): Promise<void> => {
     if (stopActionRef.current) {
@@ -277,6 +297,15 @@ export function useLivePerformance({
       setDuration(nextDuration);
     }
   }, []);
+
+  useEffect(() => {
+    if (
+      status === "recording" &&
+      currentTime >= rangeEndSeconds - 0.05
+    ) {
+      void stop();
+    }
+  }, [currentTime, rangeEndSeconds, status, stop]);
 
   return {
     audioRef,

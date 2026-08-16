@@ -119,10 +119,10 @@ describe("Karaoke Pitch Lab", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "七里香" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "参考音调线" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "原唱人声音调线" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "开始演唱" }));
-    expect(screen.getByRole("heading", { name: "准备开始演唱" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "选择演唱方式" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "上传已有录音" }));
     expect(
       screen.getByRole("heading", { name: "上传演唱录音，获得本次评分" }),

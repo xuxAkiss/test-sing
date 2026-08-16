@@ -7,7 +7,7 @@ from threading import Lock
 from typing import Any
 import uuid
 
-from .processing import AudioProcessor, Processor
+from .processing import AudioProcessor, Processor, REFERENCE_PITCH_SCHEMA_VERSION
 from .store import FileStore, RecordNotFound, utc_now
 
 
@@ -42,7 +42,10 @@ class KaraokeService:
         size_bytes: int,
         sha256: str,
     ) -> dict[str, Any]:
-        cached_song = self.store.find_ready_song_by_hash(sha256)
+        cached_song = self.store.find_ready_song_by_hash(
+            sha256,
+            reference_pitch_schema_version=REFERENCE_PITCH_SCHEMA_VERSION,
+        )
         if cached_song is not None:
             incoming_path.unlink(missing_ok=True)
             job_id = uuid.uuid4().hex
@@ -110,6 +113,8 @@ class KaraokeService:
         content_type: str | None,
         size_bytes: int,
         sha256: str,
+        segment_start_seconds: float | None = None,
+        segment_end_seconds: float | None = None,
     ) -> dict[str, Any]:
         song = self.store.get_song(song_id)
         if song["status"] != "ready":
@@ -134,6 +139,8 @@ class KaraokeService:
                 "pitch_comparison_path": None,
                 "score": None,
                 "separation_seconds": None,
+                "segment_start_seconds": segment_start_seconds,
+                "segment_end_seconds": segment_end_seconds,
                 "error": None,
             }
         )
@@ -253,7 +260,12 @@ class KaraokeService:
                 )
 
             result = self.processor.process_performance(
-                reference_path, source_path, output, progress
+                reference_path,
+                source_path,
+                output,
+                progress,
+                segment_start_seconds=performance.get("segment_start_seconds"),
+                segment_end_seconds=performance.get("segment_end_seconds"),
             )
             self.store.update_performance(
                 performance_id,

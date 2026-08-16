@@ -17,6 +17,7 @@ class FakeProcessor:
     def __init__(self) -> None:
         self.song_calls = 0
         self.performance_calls = 0
+        self.last_segment = (None, None)
 
     def process_song(self, source_path, output_directory, progress):
         self.song_calls += 1
@@ -30,7 +31,8 @@ class FakeProcessor:
         pitch.write_text(
             json.dumps(
                 {
-                    "schema_version": 1,
+                    "schema_version": 2,
+                    "source": "separated_original_vocals",
                     "start_seconds": 0.025,
                     "hop_seconds": 0.02,
                     "duration_seconds": 0.08,
@@ -57,8 +59,12 @@ class FakeProcessor:
         performance_path,
         output_directory,
         progress,
+        *,
+        segment_start_seconds=None,
+        segment_end_seconds=None,
     ):
         self.performance_calls += 1
+        self.last_segment = (segment_start_seconds, segment_end_seconds)
         output_directory.mkdir(parents=True, exist_ok=True)
         progress(0.5, "fake analysis")
         vocals = output_directory / "user_vocals.wav"
@@ -204,6 +210,30 @@ class BackendApiTests(unittest.TestCase):
         self.assertEqual(second["status"], "completed")
         self.assertEqual(self.processor.song_calls, 1)
 
+    def test_old_pitch_cache_is_rebuilt_once_then_new_version_is_reused(self) -> None:
+        first = self._upload_song()
+        first_metadata = json.loads(
+            (
+                self.data_root
+                / "songs"
+                / str(first["song_id"])
+                / "metadata.json"
+            ).read_text(encoding="utf-8")
+        )
+        old_pitch_path = self.data_root / first_metadata["reference_pitch_path"]
+        old_pitch = json.loads(old_pitch_path.read_text(encoding="utf-8"))
+        old_pitch["schema_version"] = 1
+        old_pitch.pop("source", None)
+        old_pitch_path.write_text(json.dumps(old_pitch), encoding="utf-8")
+
+        rebuilt = self._upload_song()
+        reused = self._upload_song()
+
+        self.assertNotEqual(rebuilt["song_id"], first["song_id"])
+        self.assertEqual(reused["song_id"], rebuilt["song_id"])
+        self.assertTrue(reused["cached"])
+        self.assertEqual(self.processor.song_calls, 2)
+
     def test_performance_upload_returns_score_and_comparison(self) -> None:
         song = self._upload_song()
         response = self.client.post(
@@ -222,9 +252,48 @@ class BackendApiTests(unittest.TestCase):
         self.assertEqual(job["status"], "completed")
         self.assertEqual(performance["status"], "ready")
         self.assertEqual(performance["score"]["overall"], 88.0)
+        self.assertIsNone(performance["segment_start_seconds"])
+        self.assertIsNone(performance["segment_end_seconds"])
         self.assertEqual(comparison.status_code, 200)
         self.assertIn("<svg", comparison.text)
         self.assertEqual(self.processor.performance_calls, 1)
+
+    def test_segment_performance_forwards_range_and_exposes_it(self) -> None:
+        song = self._upload_song()
+        response = self.client.post(
+            f"/api/songs/{song['song_id']}/performances",
+            data={
+                "segment_start_seconds": "2.5",
+                "segment_end_seconds": "12.5",
+            },
+            files={"file": ("take.webm", b"performance-audio", "audio/webm")},
+        )
+
+        self.assertEqual(response.status_code, 202, response.text)
+        performance = self.client.get(
+            f"/api/performances/{response.json()['performance_id']}"
+        ).json()
+        self.assertEqual(self.processor.last_segment, (2.5, 12.5))
+        self.assertEqual(performance["segment_start_seconds"], 2.5)
+        self.assertEqual(performance["segment_end_seconds"], 12.5)
+
+    def test_segment_performance_rejects_incomplete_or_short_range(self) -> None:
+        song = self._upload_song()
+        endpoint = f"/api/songs/{song['song_id']}/performances"
+        incomplete = self.client.post(
+            endpoint,
+            data={"segment_start_seconds": "2"},
+            files={"file": ("take.webm", b"performance-audio", "audio/webm")},
+        )
+        short = self.client.post(
+            endpoint,
+            data={"segment_start_seconds": "2", "segment_end_seconds": "5"},
+            files={"file": ("take.webm", b"performance-audio", "audio/webm")},
+        )
+
+        self.assertEqual(incomplete.status_code, 422)
+        self.assertEqual(short.status_code, 422)
+        self.assertEqual(self.processor.performance_calls, 0)
 
     def test_processing_failure_is_persisted_without_absolute_path(self) -> None:
         settings = Settings(data_root=self.data_root / "failure", max_upload_bytes=1024)

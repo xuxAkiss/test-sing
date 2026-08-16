@@ -94,12 +94,37 @@ class FileStore:
             changes,
         )
 
-    def find_ready_song_by_hash(self, sha256: str) -> dict[str, Any] | None:
+    def find_ready_song_by_hash(
+        self,
+        sha256: str,
+        *,
+        reference_pitch_schema_version: int | None = None,
+    ) -> dict[str, Any] | None:
         with self._lock:
             for metadata_path in self.songs_root.glob("*/metadata.json"):
                 payload = self._read_json(metadata_path)
-                if payload.get("sha256") == sha256 and payload.get("status") == "ready":
-                    return deepcopy(payload)
+                if payload.get("sha256") != sha256 or payload.get("status") != "ready":
+                    continue
+                if reference_pitch_schema_version is not None:
+                    pitch_relative_path = payload.get("reference_pitch_path")
+                    if not isinstance(pitch_relative_path, str):
+                        continue
+                    try:
+                        pitch_path = self.resolve_path(pitch_relative_path)
+                    except ValueError:
+                        continue
+                    if not pitch_path.is_file():
+                        continue
+                    try:
+                        pitch_payload = self._read_json(pitch_path)
+                    except (OSError, json.JSONDecodeError):
+                        continue
+                    if (
+                        pitch_payload.get("schema_version")
+                        != reference_pitch_schema_version
+                    ):
+                        continue
+                return deepcopy(payload)
         return None
 
     def relative_path(self, path: Path) -> str:

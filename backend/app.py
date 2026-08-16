@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import hashlib
+import math
 from pathlib import Path
 from typing import Any, AsyncIterator
 import uuid
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile, status
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
@@ -50,7 +51,7 @@ def create_app(
 
     application = FastAPI(
         title="Karaoke Pitch Lab API",
-        version="0.2.0",
+        version="0.3.0",
         description="上传歌曲、生成伴奏与参考音调线，并对用户演唱进行可解释评分。",
         lifespan=lifespan,
     )
@@ -126,7 +127,10 @@ def create_app(
         response_model=SubmissionResponse,
     )
     async def upload_performance(
-        song_id: str, file: UploadFile = File(...)
+        song_id: str,
+        file: UploadFile = File(...),
+        segment_start_seconds: float | None = Form(default=None),
+        segment_end_seconds: float | None = Form(default=None),
     ) -> dict[str, object]:
         try:
             song = store.get_song(song_id)
@@ -134,9 +138,19 @@ def create_app(
             raise HTTPException(status_code=404, detail="歌曲不存在。") from exc
         if song["status"] != "ready":
             raise HTTPException(status_code=409, detail="歌曲尚未处理完成。")
+        segment_start_seconds, segment_end_seconds = _validate_segment_range(
+            segment_start_seconds,
+            segment_end_seconds,
+            float(song.get("duration_seconds") or 0.0),
+        )
         upload = await _persist_upload(file, resolved_settings, store.incoming_root)
         try:
-            job = service.submit_performance(song_id, **upload)
+            job = service.submit_performance(
+                song_id,
+                **upload,
+                segment_start_seconds=segment_start_seconds,
+                segment_end_seconds=segment_end_seconds,
+            )
         except ResourceConflict as exc:
             upload["incoming_path"].unlink(missing_ok=True)
             raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -240,6 +254,26 @@ def _ready_song(store: FileStore, song_id: str) -> dict[str, Any]:
     return song
 
 
+def _validate_segment_range(
+    start_seconds: float | None,
+    end_seconds: float | None,
+    song_duration_seconds: float,
+) -> tuple[float | None, float | None]:
+    if start_seconds is None and end_seconds is None:
+        return None, None
+    if start_seconds is None or end_seconds is None:
+        raise HTTPException(status_code=422, detail="片段演唱必须同时提供开始和结束时间。")
+    if not math.isfinite(start_seconds) or not math.isfinite(end_seconds):
+        raise HTTPException(status_code=422, detail="片段时间必须是有限数值。")
+    if start_seconds < 0 or end_seconds <= start_seconds:
+        raise HTTPException(status_code=422, detail="片段结束时间必须晚于开始时间。")
+    if end_seconds - start_seconds < 5.0:
+        raise HTTPException(status_code=422, detail="演唱片段至少需要 5 秒。")
+    if song_duration_seconds <= 0 or end_seconds > song_duration_seconds + 0.05:
+        raise HTTPException(status_code=422, detail="片段范围超出了歌曲时长。")
+    return round(start_seconds, 3), round(end_seconds, 3)
+
+
 def _submission_payload(job: dict[str, Any]) -> dict[str, object]:
     return {
         "job_id": job["id"],
@@ -307,6 +341,8 @@ def _public_performance(performance: dict[str, Any]) -> dict[str, object]:
             "status",
             "score",
             "separation_seconds",
+            "segment_start_seconds",
+            "segment_end_seconds",
             "error",
             "created_at",
             "updated_at",

@@ -2,6 +2,7 @@ import type {
   JobResponse,
   PerformanceResponse,
   ReferencePitchResponse,
+  SingingSelection,
   SongResponse,
   SubmissionResponse,
 } from "../types";
@@ -66,8 +67,18 @@ export function getReferencePitch(
 export function uploadPerformance(
   songId: string,
   file: File,
+  selection: SingingSelection,
 ): Promise<SubmissionResponse> {
-  return upload(`/api/songs/${songId}/performances`, file);
+  const formData = new FormData();
+  formData.append("file", file);
+  if (selection.mode === "segment") {
+    formData.append("segment_start_seconds", selection.startSeconds.toFixed(3));
+    formData.append("segment_end_seconds", selection.endSeconds.toFixed(3));
+  }
+  return requestJson<SubmissionResponse>(`/api/songs/${songId}/performances`, {
+    method: "POST",
+    body: formData,
+  });
 }
 
 export function getPerformance(

@@ -11,9 +11,11 @@ from audio_engine.media import read_audio
 from audio_engine.pipeline import analyze_files
 from audio_engine.pitch import PitchTrack, extract_pitch, frequency_to_midi
 from audio_engine.separation import separate_vocals
+from audio_engine.wav_io import write_wav
 
 
 ProgressCallback = Callable[[float, str], None]
+REFERENCE_PITCH_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -45,6 +47,9 @@ class Processor(Protocol):
         performance_path: Path,
         output_directory: Path,
         progress: ProgressCallback,
+        *,
+        segment_start_seconds: float | None = None,
+        segment_end_seconds: float | None = None,
     ) -> PerformanceArtifacts: ...
 
 
@@ -65,7 +70,7 @@ class AudioProcessor:
         progress(0.82, "正在从原唱人声生成标准音调线……")
         vocals_path = Path(separation.vocals_path)
         audio = read_audio(vocals_path)
-        track = extract_pitch(audio)
+        track = _clean_reference_pitch(extract_pitch(audio))
         pitch_path = output_directory / "reference_pitch.json"
         pitch_path.write_text(
             json.dumps(_pitch_payload(track), ensure_ascii=False, separators=(",", ":")),
@@ -86,6 +91,9 @@ class AudioProcessor:
         performance_path: Path,
         output_directory: Path,
         progress: ProgressCallback,
+        *,
+        segment_start_seconds: float | None = None,
+        segment_end_seconds: float | None = None,
     ) -> PerformanceArtifacts:
         output_directory.mkdir(parents=True, exist_ok=True)
         progress(0.12, "正在从手机录音中分离演唱人声……")
@@ -96,8 +104,16 @@ class AudioProcessor:
         )
         progress(0.78, "正在提取音高并进行 DTW 对齐……")
         analysis_directory = output_directory / "analysis"
+        analysis_reference_path = reference_vocals_path
+        if segment_start_seconds is not None and segment_end_seconds is not None:
+            analysis_reference_path = _write_reference_segment(
+                reference_vocals_path,
+                analysis_directory / "reference_segment.wav",
+                segment_start_seconds,
+                segment_end_seconds,
+            )
         report = analyze_files(
-            reference_vocals_path,
+            analysis_reference_path,
             separation.vocals_path,
             analysis_directory,
             max_shift_seconds=10.0,
@@ -122,7 +138,8 @@ def _pitch_payload(track: PitchTrack) -> dict[str, object]:
         for value, is_finite in zip(midi, finite, strict=True)
     ]
     return {
-        "schema_version": 1,
+        "schema_version": REFERENCE_PITCH_SCHEMA_VERSION,
+        "source": "separated_original_vocals",
         "start_seconds": round(float(track.times[0]), 6) if track.times.size else 0.0,
         "hop_seconds": round(float(track.hop_seconds), 6),
         "duration_seconds": round(float(track.duration_seconds), 3),
@@ -131,3 +148,47 @@ def _pitch_payload(track: PitchTrack) -> dict[str, object]:
         "maximum_midi": round(float(np.max(midi[finite])), 3) if np.any(finite) else None,
         "frames": frames,
     }
+
+
+def _clean_reference_pitch(track: PitchTrack) -> PitchTrack:
+    """Keep confident, sustained notes from the separated original-vocal stem."""
+
+    frequencies = track.frequencies.copy()
+    confident = track.confidences >= 0.72
+    frequencies[~confident] = 0.0
+
+    minimum_run_frames = max(3, int(round(0.10 / track.hop_seconds)))
+    index = 0
+    while index < frequencies.size:
+        if frequencies[index] <= 0:
+            index += 1
+            continue
+        end = index + 1
+        while end < frequencies.size and frequencies[end] > 0:
+            end += 1
+        if end - index < minimum_run_frames:
+            frequencies[index:end] = 0.0
+        index = end
+
+    return PitchTrack(
+        times=track.times,
+        frequencies=frequencies,
+        confidences=track.confidences,
+        rms=track.rms,
+        hop_seconds=track.hop_seconds,
+    )
+
+
+def _write_reference_segment(
+    source_path: Path,
+    destination_path: Path,
+    start_seconds: float,
+    end_seconds: float,
+) -> Path:
+    audio = read_audio(source_path)
+    start_frame = max(0, int(round(start_seconds * audio.sample_rate)))
+    end_frame = min(len(audio.samples), int(round(end_seconds * audio.sample_rate)))
+    if end_frame <= start_frame:
+        raise ValueError("所选演唱片段没有可用于评分的原唱人声。")
+    write_wav(destination_path, audio.samples[start_frame:end_frame], audio.sample_rate)
+    return destination_path

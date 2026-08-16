@@ -12,6 +12,7 @@ import type {
   JobResponse,
   PerformanceResponse,
   ReferencePitchResponse,
+  SingingSelection,
   SongResponse,
 } from "../types";
 import { useJobPolling } from "./useJobPolling";
@@ -36,7 +37,7 @@ interface KaraokeWorkflow {
   error: string | null;
   submitSongFile: (file: File) => Promise<void>;
   choosePerformance: () => void;
-  submitPerformanceFile: (file: File) => Promise<void>;
+  submitPerformanceFile: (file: File, selection: SingingSelection) => Promise<void>;
   backToSong: () => void;
   resetSong: () => void;
   retryPerformance: () => void;
@@ -133,7 +134,7 @@ export function useKaraokeWorkflow(): KaraokeWorkflow {
   );
 
   const submitPerformanceFile = useCallback(
-    async (file: File) => {
+    async (file: File, selection: SingingSelection) => {
       if (!song) {
         fail(new Error("请先处理一首歌曲。"));
         return;
@@ -142,7 +143,7 @@ export function useKaraokeWorkflow(): KaraokeWorkflow {
       setJob(null);
       setPhase("performance-uploading");
       try {
-        const submission = await uploadPerformance(song.id, file);
+        const submission = await uploadPerformance(song.id, file, selection);
         if (submission.status === "completed" && submission.performance_id) {
           const result = await getPerformance(submission.performance_id);
           setPerformance(result);
