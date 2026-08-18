@@ -44,8 +44,8 @@ def render_pitch_comparison(
     elements = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
         '<rect width="100%" height="100%" fill="#0b1020"/>',
-        '<text x="80" y="44" fill="#f8fafc" font-size="25" font-family="sans-serif" font-weight="700">Pitch comparison</text>',
-        f'<text x="80" y="73" fill="#94a3b8" font-size="15" font-family="sans-serif">Overall {report.overall:.1f} · Pitch {report.pitch:.1f} · Rhythm {report.rhythm:.1f} · Completeness {report.completeness:.1f} · Stability {report.stability:.1f}</text>',
+        '<text x="80" y="44" fill="#f8fafc" font-size="25" font-family="sans-serif" font-weight="700">音高对比</text>',
+        f'<text x="80" y="73" fill="#94a3b8" font-size="15" font-family="sans-serif">总分 {report.overall:.1f} · 音准 {report.pitch:.1f} · 节奏 {report.rhythm:.1f} · 完整度 {report.completeness:.1f} · 稳定性 {report.stability:.1f}</text>',
         f'<rect x="{left}" y="{top}" width="{plot_width}" height="{plot_height}" fill="#111827" stroke="#334155"/>',
     ]
 
@@ -72,10 +72,10 @@ def render_pitch_comparison(
     elements.extend(
         [
             '<line x1="860" y1="42" x2="900" y2="42" stroke="#38bdf8" stroke-width="4"/>',
-            '<text x="910" y="47" fill="#cbd5e1" font-size="14" font-family="sans-serif">Reference</text>',
+            '<text x="910" y="47" fill="#cbd5e1" font-size="14" font-family="sans-serif">原唱</text>',
             '<line x1="1010" y1="42" x2="1050" y2="42" stroke="#fb7185" stroke-width="4"/>',
-            '<text x="1060" y="47" fill="#cbd5e1" font-size="14" font-family="sans-serif">Performance</text>',
-            f'<text x="{left}" y="{height - 18}" fill="#64748b" font-size="12" font-family="sans-serif">Delay correction: {alignment.shift_seconds:+.3f}s · octave correction: {alignment.octave_shift_semitones:+d} semitones</text>',
+            '<text x="1060" y="47" fill="#cbd5e1" font-size="14" font-family="sans-serif">你的演唱</text>',
+            f'<text x="{left}" y="{height - 18}" fill="#64748b" font-size="12" font-family="sans-serif">延迟校正 {alignment.shift_seconds:+.3f}秒 · 八度校正 {alignment.octave_shift_semitones:+d}半音</text>',
             "</svg>",
         ]
     )

@@ -64,6 +64,9 @@ class PipelineTests(unittest.TestCase):
                 self.assertTrue((output / name).is_file(), name)
             payload = json.loads((output / "report.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["overall"], report.overall)
+            comparison = (output / "pitch_comparison.svg").read_text(encoding="utf-8")
+            self.assertIn("音高对比", comparison)
+            self.assertIn("你的演唱", comparison)
 
     def test_large_detune_scores_lower(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

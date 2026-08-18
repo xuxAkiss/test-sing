@@ -18,7 +18,7 @@
 - React + TypeScript 手机优先界面、伴奏播放器和以原唱局部音区居中的滚动音调线
 - 完整演唱与自选片段两种模式；片段播放、录音、参考裁切和评分使用同一时间范围
 - 浏览器麦克风录音、客户端 YIN 实时音高检测和“原唱音调 / 你的音高”双轨音调线
-- 歌曲处理进度、演唱上传、评分指标与音高对比图完整流程
+- 歌曲处理进度、演唱上传、评分指标、优势/改进建议与中文音高对比图完整流程
 - 使用合成旋律完成可重复的自动测试
 
 当前版本已经完成离线音频引擎、后端 API、手机优先 Web MVP 和浏览器实时演唱模式验证。用户允许麦克风后可以边播放伴奏边查看实时音高，结束时录音会自动提交服务端高精度复算。规则分数仍是工程 baseline，尚未使用人工评分数据校准。
@@ -148,6 +148,16 @@ Web 客户端状态流、组件划分与浏览器验收说明见 [docs/WEB_MVP_F
 ```powershell
 .venv\Scripts\python -m unittest discover -s tests -v
 ```
+
+三首本地真实录音（《搁浅》《七里香》《告白气球》）不会提交到 Git，也不会拖慢默认测试。需要复核真实录音评分下限时，显式运行：
+
+```powershell
+$env:KARAOKE_RUN_REAL_AUDIO_REGRESSION = "1"
+.venv\Scripts\python -m unittest tests.test_real_audio_regression -v
+Remove-Item Env:KARAOKE_RUN_REAL_AUDIO_REGRESSION
+```
+
+测试直接复用 `artifacts/reference_separation/` 与 `artifacts/full_separation/` 中已分离的人声，避免每次重新运行 Demucs；评分产物写入 `.tmp/real-audio-regression/`。缺少任一启用的本地音频时测试会明确失败，而不是悄悄跳过。
 
 ## 评分说明
 

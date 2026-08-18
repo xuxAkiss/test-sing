@@ -1211,9 +1211,10 @@ button:disabled {
   grid-template-areas:
     "summary chart"
     "metrics chart"
+    "insights chart"
     "actions chart";
   align-items: start;
-  gap: 30px clamp(52px, 8vw, 132px);
+  gap: 28px clamp(52px, 8vw, 132px);
   min-height: calc(100vh - 78px);
   padding: clamp(52px, 7vh, 90px) clamp(28px, 8vw, 130px);
 }
@@ -1225,14 +1226,14 @@ button:disabled {
 .score-summary h1 {
   margin: 0;
   color: var(--muted);
-  font-size: 13px;
-  letter-spacing: 0.08em;
+  font-size: 16px;
+  letter-spacing: 0.04em;
 }
 
 .overall-score {
   display: block;
   margin: 2px 0 0;
-  color: var(--paper);
+  color: var(--coral);
   font-size: clamp(100px, 10vw, 154px);
   font-weight: 850;
   line-height: 0.95;
@@ -1240,7 +1241,7 @@ button:disabled {
 }
 
 .overall-score::after {
-  color: var(--coral);
+  color: var(--paper);
   font-size: 22px;
   content: "/100";
   letter-spacing: -0.02em;
@@ -1255,11 +1256,12 @@ button:disabled {
 
 .comparison-frame {
   grid-area: chart;
-  align-self: center;
+  align-self: start;
   margin: 0;
   overflow: hidden;
   border: 1px solid var(--line);
-  background: white;
+  border-radius: 3px;
+  background: #0b1020;
 }
 
 .comparison-frame img {
@@ -1311,6 +1313,55 @@ button:disabled {
 .score-row strong {
   font-size: 14px;
   font-variant-numeric: tabular-nums;
+}
+
+.score-insights {
+  grid-area: insights;
+  border-top: 1px solid var(--line);
+}
+
+.score-insight {
+  padding: 19px 0 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.score-insight h2 {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.score-insight-strength h2 {
+  color: var(--cyan);
+}
+
+.score-insight-focus h2 {
+  color: var(--coral);
+}
+
+.score-insight p {
+  margin: 9px 0 0;
+  color: #c7cccf;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.register-note {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  padding: 17px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.register-note svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
 }
 
 .score-actions {
@@ -1495,7 +1546,7 @@ button:disabled {
   .score-screen {
     display: flex;
     flex-direction: column;
-    gap: 34px;
+    gap: 30px;
     min-height: calc(100vh - 64px);
     padding: 38px 20px 34px;
   }
@@ -1504,8 +1555,28 @@ button:disabled {
     font-size: 112px;
   }
 
+  .score-summary {
+    width: 100%;
+    text-align: center;
+  }
+
   .score-summary p {
+    max-width: none;
     margin-top: 14px;
+  }
+
+  .score-metrics {
+    gap: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .score-row {
+    min-height: 54px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .score-insights {
+    width: 100%;
   }
 
   .comparison-frame {
@@ -1690,7 +1761,7 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .score-actions .text-button {
+  .score-actions .secondary-button {
     order: 2;
   }
 

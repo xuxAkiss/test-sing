@@ -100,6 +100,11 @@ describe("Karaoke Pitch Lab", () => {
             rhythm: 91.2,
             completeness: 89.8,
             stability: 85.1,
+            alignment: { octave_shift_semitones: -12 },
+            diagnostics: {
+              median_signed_error_cents: -18,
+              p90_absolute_error_cents: 180,
+            },
           },
           separation_seconds: 18,
           error: null,
@@ -137,12 +142,18 @@ describe("Karaoke Pitch Lab", () => {
     );
 
     expect(await screen.findByText("88")).toBeInTheDocument();
-    expect(screen.getByText("节奏稳定，音准还有提升空间")).toBeInTheDocument();
+    expect(screen.getByText("演唱完成度很高，再打磨薄弱项")).toBeInTheDocument();
+    expect(screen.getByText("这次唱得好的")).toBeInTheDocument();
+    expect(screen.getByText("下次重点练习")).toBeInTheDocument();
+    expect(screen.getByText("已按低一个八度等价评分")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "参考音高与本次演唱的对比图" })).toHaveAttribute(
       "src",
       "/api/assets/performance-1/comparison.png",
     );
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+
+    await user.click(screen.getByRole("button", { name: "再唱一次" }));
+    expect(screen.getByRole("heading", { name: "选择演唱方式" })).toBeInTheDocument();
   });
 });
 

@@ -2,6 +2,8 @@ import type { CSSProperties } from "react";
 
 import { assetUrl } from "../api/client";
 import type { PerformanceResponse, ScoreResponse } from "../types";
+import { buildScoreFeedback } from "../utils/scoreFeedback";
+import { MusicNoteIcon } from "./Icons";
 
 interface ScoreViewProps {
   performance: PerformanceResponse;
@@ -22,20 +24,15 @@ export function ScoreView({ performance, onRetry, onBack }: ScoreViewProps) {
     return null;
   }
   const overall = Math.round(score.overall);
+  const feedback = buildScoreFeedback(score);
 
   return (
     <main className="score-screen">
       <section className="score-summary">
         <h1>本次演唱</h1>
         <strong className="overall-score">{overall}</strong>
-        <p>{feedbackFor(overall)}</p>
+        <p>{feedback.summary}</p>
       </section>
-
-      {performance.comparison_url ? (
-        <figure className="comparison-frame">
-          <img src={assetUrl(performance.comparison_url)} alt="参考音高与本次演唱的对比图" />
-        </figure>
-      ) : null}
 
       <dl className="score-metrics">
         {metricLabels.map(([key, label]) => {
@@ -57,27 +54,37 @@ export function ScoreView({ performance, onRetry, onBack }: ScoreViewProps) {
         })}
       </dl>
 
+      <section className="score-insights" aria-label="演唱反馈">
+        <article className="score-insight score-insight-strength">
+          <h2>这次唱得好的</h2>
+          <p>{feedback.strength}</p>
+        </article>
+        <article className="score-insight score-insight-focus">
+          <h2>下次重点练习</h2>
+          <p>{feedback.focus}</p>
+        </article>
+        {feedback.registerNote ? (
+          <p className="register-note">
+            <MusicNoteIcon />
+            {feedback.registerNote}
+          </p>
+        ) : null}
+      </section>
+
+      {performance.comparison_url ? (
+        <figure className="comparison-frame" aria-label="音高对比">
+          <img src={assetUrl(performance.comparison_url)} alt="参考音高与本次演唱的对比图" />
+        </figure>
+      ) : null}
+
       <div className="score-actions">
         <button className="primary-button" type="button" onClick={onRetry}>
           再唱一次
         </button>
-        <button className="text-button" type="button" onClick={onBack}>
+        <button className="secondary-button" type="button" onClick={onBack}>
           返回歌曲
         </button>
       </div>
     </main>
   );
-}
-
-function feedbackFor(overall: number): string {
-  if (overall >= 90) {
-    return "整体稳定，细节已经很接近参考旋律";
-  }
-  if (overall >= 80) {
-    return "节奏稳定，音准还有提升空间";
-  }
-  if (overall >= 70) {
-    return "旋律基本完整，可以再关注音准";
-  }
-  return "先跟稳参考线，再逐步提升完整度";
 }
