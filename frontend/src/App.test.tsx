@@ -6,6 +6,7 @@ import { App } from "./App";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  window.localStorage.clear();
 });
 
 describe("Karaoke Pitch Lab", () => {
@@ -128,6 +129,10 @@ describe("Karaoke Pitch Lab", () => {
 
     await user.click(screen.getByRole("button", { name: "开始演唱" }));
     expect(screen.getByRole("heading", { name: "选择演唱方式" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "设备延迟校准" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "开始校准（约 4 秒）" }),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "上传已有录音" }));
     expect(
       screen.getByRole("heading", { name: "上传演唱录音，获得本次评分" }),

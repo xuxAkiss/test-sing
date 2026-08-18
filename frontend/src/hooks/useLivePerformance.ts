@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { compensatePlaybackTime } from "../audio/latencyCalibration";
 import type { LivePitchPoint } from "../types";
 
 type LiveSessionStatus = "preflight" | "requesting" | "recording" | "stopping";
@@ -8,6 +9,7 @@ interface UseLivePerformanceOptions {
   fallbackDuration: number;
   rangeStartSeconds: number;
   rangeEndSeconds: number;
+  latencyMs?: number;
   onComplete: (recording: File) => Promise<void> | void;
 }
 
@@ -34,6 +36,7 @@ export function useLivePerformance({
   fallbackDuration,
   rangeStartSeconds,
   rangeEndSeconds,
+  latencyMs = 0,
   onComplete,
 }: UseLivePerformanceOptions): LivePerformanceSession {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -48,6 +51,7 @@ export function useLivePerformance({
   const statusRef = useRef<LiveSessionStatus>("preflight");
   const mountedRef = useRef(true);
   const rangeStartRef = useRef(rangeStartSeconds);
+  const latencyMsRef = useRef(latencyMs);
   const onCompleteRef = useRef(onComplete);
   const [status, setStatus] = useState<LiveSessionStatus>("preflight");
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +71,10 @@ export function useLivePerformance({
       setCurrentTime(rangeStartSeconds);
     }
   }, [rangeStartSeconds]);
+
+  useEffect(() => {
+    latencyMsRef.current = latencyMs;
+  }, [latencyMs]);
 
   useEffect(() => {
     onCompleteRef.current = onComplete;
@@ -131,7 +139,11 @@ export function useLivePerformance({
         analyser.getFloatTimeDomainData(samples);
         const frequency = pitchModule.detectPitch(samples, audioContext.sampleRate);
         const midi = frequency === null ? null : pitchModule.frequencyToMidi(frequency);
-        const playbackTime = audio.currentTime;
+        const playbackTime = compensatePlaybackTime(
+          audio.currentTime,
+          latencyMsRef.current,
+          rangeStartRef.current,
+        );
         setCurrentTime(playbackTime);
         setCurrentMidi(midi);
         setPitchPoints((current) => {

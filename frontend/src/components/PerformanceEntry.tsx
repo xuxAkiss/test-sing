@@ -5,6 +5,11 @@ import {
   getLiveRecordingSupportIssue,
   useLivePerformance,
 } from "../hooks/useLivePerformance";
+import {
+  useLatencyCalibration,
+  type LatencyCalibrationStatus,
+} from "../hooks/useLatencyCalibration";
+import type { LatencyCalibrationResult } from "../audio/latencyCalibration";
 import type {
   LivePitchPoint,
   ReferencePitchResponse,
@@ -50,6 +55,7 @@ export function PerformanceEntry({
     [mode, segmentSelection, songDuration],
   );
   const accompaniment = song.resources?.accompaniment;
+  const calibration = useLatencyCalibration();
   const {
     audioRef,
     status,
@@ -64,6 +70,7 @@ export function PerformanceEntry({
     fallbackDuration: songDuration,
     rangeStartSeconds: selection.startSeconds,
     rangeEndSeconds: selection.endSeconds,
+    latencyMs: calibration.result?.delayMs ?? 0,
     onComplete: (recording) => onRecording(recording, selection),
   });
 
@@ -102,6 +109,7 @@ export function PerformanceEntry({
           duration={duration}
           pitchPoints={pitchPoints}
           selection={selection}
+          latencyMs={calibration.result?.delayMs ?? 0}
           onStop={stop}
         />
       ) : (
@@ -113,6 +121,10 @@ export function PerformanceEntry({
           songDuration={songDuration}
           requesting={status === "requesting"}
           error={error ?? getLiveRecordingSupportIssue()}
+          calibrationStatus={calibration.status}
+          calibrationResult={calibration.result}
+          calibrationError={calibration.error}
+          onCalibrate={() => void calibration.calibrate()}
           onStart={() => void start()}
           onUpload={() => setUploadFallback(true)}
           onModeChange={setMode}
@@ -133,6 +145,10 @@ interface MicrophonePreflightProps {
   songDuration: number;
   requesting: boolean;
   error: string | null;
+  calibrationStatus: LatencyCalibrationStatus;
+  calibrationResult: LatencyCalibrationResult | null;
+  calibrationError: string | null;
+  onCalibrate: () => void;
   onStart: () => void;
   onUpload: () => void;
   onModeChange: (mode: SingingMode) => void;
@@ -147,6 +163,10 @@ function MicrophonePreflight({
   songDuration,
   requesting,
   error,
+  calibrationStatus,
+  calibrationResult,
+  calibrationError,
+  onCalibrate,
   onStart,
   onUpload,
   onModeChange,
@@ -166,6 +186,13 @@ function MicrophonePreflight({
         onModeChange={onModeChange}
         onRangeChange={onRangeChange}
       />
+      <LatencyCalibrationPanel
+        status={calibrationStatus}
+        result={calibrationResult}
+        error={calibrationError}
+        disabled={requesting}
+        onCalibrate={onCalibrate}
+      />
       {error ? (
         <p className="microphone-error" role="alert">
           {error}
@@ -175,10 +202,16 @@ function MicrophonePreflight({
         <button
           className="primary-button"
           type="button"
-          disabled={requesting || unsupported}
+          disabled={
+            requesting || unsupported || calibrationStatus === "calibrating"
+          }
           onClick={onStart}
         >
-          {requesting ? "正在连接麦克风…" : "允许麦克风并开始"}
+          {requesting
+            ? "正在连接麦克风…"
+            : calibrationStatus === "calibrating"
+              ? "请先完成校准…"
+              : "允许麦克风并开始"}
         </button>
         <button className="secondary-button" type="button" onClick={onUpload}>
           上传已有录音
@@ -188,9 +221,67 @@ function MicrophonePreflight({
         麦克风会实时识别你的音高，并录制本次演唱用于评分
       </p>
       <p className="microphone-advice">
-        建议佩戴耳机，或将手机远离外放音箱
+        请使用准备演唱时的输出设备；切换扬声器、耳机或蓝牙后需重新校准
       </p>
     </main>
+  );
+}
+
+interface LatencyCalibrationPanelProps {
+  status: LatencyCalibrationStatus;
+  result: LatencyCalibrationResult | null;
+  error: string | null;
+  disabled: boolean;
+  onCalibrate: () => void;
+}
+
+function LatencyCalibrationPanel({
+  status,
+  result,
+  error,
+  disabled,
+  onCalibrate,
+}: LatencyCalibrationPanelProps) {
+  const isCalibrating = status === "calibrating";
+  const description =
+    status === "ready" && result
+      ? `已应用 ${Math.round(result.delayMs)} ms 补偿。切换输出设备后请重新校准。`
+      : status === "failed"
+        ? (error ?? "设备校准没有成功，可以重试或直接开始演唱。")
+        : isCalibrating
+          ? "正在播放三组校准音，请保持环境安静并不要移动手机。"
+          : "手机会播放三组短促校准音并用麦克风测量，约 4 秒完成。";
+
+  return (
+    <section
+      className={`latency-calibration is-${status}`}
+      aria-labelledby="latency-calibration-title"
+    >
+      <div className="latency-calibration-copy">
+        <h3 id="latency-calibration-title">设备延迟校准</h3>
+        <p role={status === "failed" ? "alert" : undefined}>{description}</p>
+      </div>
+      <div className="latency-calibration-result">
+        {status === "ready" && result ? (
+          <span className="latency-reading">
+            <strong>{Math.round(result.delayMs)} ms</strong>
+            <small>{result.spreadMs <= 30 ? "测量稳定" : "已完成校准"}</small>
+          </span>
+        ) : null}
+        <button
+          className="secondary-button latency-calibration-button"
+          type="button"
+          disabled={disabled || isCalibrating}
+          onClick={onCalibrate}
+        >
+          {isCalibrating
+            ? "正在校准…"
+            : status === "idle"
+              ? "开始校准（约 4 秒）"
+              : "重新校准"}
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -202,6 +293,7 @@ interface LiveSingingScreenProps {
   duration: number;
   pitchPoints: LivePitchPoint[];
   selection: SingingSelection;
+  latencyMs: number;
   onStop: () => Promise<void>;
 }
 
@@ -213,6 +305,7 @@ function LiveSingingScreen({
   duration,
   pitchPoints,
   selection,
+  latencyMs,
   onStop,
 }: LiveSingingScreenProps) {
   const effectiveEnd = Math.min(selection.endSeconds, duration);
@@ -259,7 +352,12 @@ function LiveSingingScreen({
       </button>
       <p className="live-playing-note">
         <MusicNoteIcon />
-        伴奏播放中
+        <span>伴奏播放中</span>
+        {latencyMs > 0 ? (
+          <span className="live-latency-note">
+            已补偿 {Math.round(latencyMs)} ms
+          </span>
+        ) : null}
       </p>
     </main>
   );
