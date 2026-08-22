@@ -1,6 +1,7 @@
 import type { ReferencePitchResponse, SingingSelection } from "../types";
 
 const DEFAULT_SEGMENT_SECONDS = 30;
+export const SEGMENT_PRE_ROLL_SECONDS = 5;
 
 export function suggestSegmentRange(
   pitch: ReferencePitchResponse,
@@ -35,6 +36,22 @@ export function suggestSegmentRange(
     startSeconds,
     endSeconds: startSeconds + segmentLength,
   };
+}
+
+export function performancePlaybackStart(
+  selection: SingingSelection,
+  preRollSeconds = SEGMENT_PRE_ROLL_SECONDS,
+): number {
+  return selection.mode === "segment"
+    ? Math.max(0, selection.startSeconds - Math.max(0, preRollSeconds))
+    : selection.startSeconds;
+}
+
+export function singingCountdownSeconds(
+  currentTime: number,
+  selectionStart: number,
+): number {
+  return Math.max(0, Math.ceil(selectionStart - currentTime));
 }
 
 export function formatTime(seconds: number): string {

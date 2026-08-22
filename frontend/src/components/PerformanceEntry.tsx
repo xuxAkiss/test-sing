@@ -18,7 +18,11 @@ import type {
   SongResponse,
 } from "../types";
 import { displaySongTitle } from "../utils/songTitle";
-import { suggestSegmentRange } from "../utils/singingRange";
+import {
+  performancePlaybackStart,
+  singingCountdownSeconds,
+  suggestSegmentRange,
+} from "../utils/singingRange";
 import { MusicNoteIcon, PauseIcon } from "./Icons";
 import { PitchTimeline } from "./PitchTimeline";
 import { SingingModeSelector } from "./SingingModeSelector";
@@ -54,6 +58,7 @@ export function PerformanceEntry({
         : { ...segmentSelection, mode: "segment" },
     [mode, segmentSelection, songDuration],
   );
+  const playbackStart = performancePlaybackStart(selection);
   const accompaniment = song.resources?.accompaniment;
   const calibration = useLatencyCalibration();
   const {
@@ -68,9 +73,11 @@ export function PerformanceEntry({
     updateDuration,
   } = useLivePerformance({
     fallbackDuration: songDuration,
+    playbackStartSeconds: playbackStart,
     rangeStartSeconds: selection.startSeconds,
     rangeEndSeconds: selection.endSeconds,
     latencyMs: calibration.result?.delayMs ?? 0,
+    referencePitch: pitch,
     onComplete: (recording) => onRecording(recording, selection),
   });
 
@@ -89,7 +96,8 @@ export function PerformanceEntry({
     return null;
   }
 
-  const isLive = status === "recording" || status === "stopping";
+  const isLive =
+    status === "countdown" || status === "recording" || status === "stopping";
   return (
     <>
       <audio
@@ -109,6 +117,7 @@ export function PerformanceEntry({
           duration={duration}
           pitchPoints={pitchPoints}
           selection={selection}
+          playbackStart={playbackStart}
           latencyMs={calibration.result?.delayMs ?? 0}
           onStop={stop}
         />
@@ -288,11 +297,12 @@ function LatencyCalibrationPanel({
 interface LiveSingingScreenProps {
   song: SongResponse;
   pitch: ReferencePitchResponse;
-  status: "recording" | "stopping";
+  status: "countdown" | "recording" | "stopping";
   currentTime: number;
   duration: number;
   pitchPoints: LivePitchPoint[];
   selection: SingingSelection;
+  playbackStart: number;
   latencyMs: number;
   onStop: () => Promise<void>;
 }
@@ -305,6 +315,7 @@ function LiveSingingScreen({
   duration,
   pitchPoints,
   selection,
+  playbackStart,
   latencyMs,
   onStop,
 }: LiveSingingScreenProps) {
@@ -312,26 +323,43 @@ function LiveSingingScreen({
   const sessionDuration = Math.max(0.01, effectiveEnd - selection.startSeconds);
   const elapsed = Math.max(0, currentTime - selection.startSeconds);
   const progress = Math.min(100, (elapsed / sessionDuration) * 100);
+  const isCountdown = status === "countdown";
+  const countdown = singingCountdownSeconds(currentTime, selection.startSeconds);
   return (
     <main className="live-singing-screen">
       <header className="live-song-heading">
         <h1>{displaySongTitle(song.title)}</h1>
         <p>
-          <span className="recording-dot" aria-hidden="true" />
-          {selection.mode === "segment" ? "片段演唱" : "完整演唱"}
+          <span
+            className={`recording-dot${isCountdown ? " is-countdown" : ""}`}
+            aria-hidden="true"
+          />
+          {isCountdown
+            ? `预备 · ${countdown} 秒后开始`
+            : selection.mode === "segment"
+              ? "片段演唱"
+              : "完整演唱"}
           <time>
             {formatTime(currentTime)} / {formatTime(effectiveEnd)}
           </time>
         </p>
       </header>
-      <PitchTimeline
-        pitch={pitch}
-        currentTime={currentTime}
-        userPitch={pitchPoints}
-        rangeStart={selection.startSeconds}
-        rangeEnd={effectiveEnd}
-        live
-      />
+      <div className="live-timeline-stage">
+        <PitchTimeline
+          pitch={pitch}
+          currentTime={currentTime}
+          userPitch={pitchPoints}
+          rangeStart={playbackStart}
+          rangeEnd={effectiveEnd}
+          live
+        />
+        {isCountdown ? (
+          <div className="singing-countdown" role="status" aria-live="assertive">
+            <strong>{countdown}</strong>
+            <span>{countdown > 1 ? "秒后开始演唱" : "准备唱"}</span>
+          </div>
+        ) : null}
+      </div>
       <div className="live-accompaniment">
         <span className="live-pause-icon" aria-hidden="true">
           <PauseIcon />
@@ -348,11 +376,15 @@ function LiveSingingScreen({
         disabled={status === "stopping"}
         onClick={() => void onStop()}
       >
-        {status === "stopping" ? "正在准备评分…" : "结束并评分"}
+        {status === "stopping"
+          ? "正在准备评分…"
+          : isCountdown
+            ? "取消本次演唱"
+            : "结束并评分"}
       </button>
       <p className="live-playing-note">
         <MusicNoteIcon />
-        <span>伴奏播放中</span>
+        <span>{isCountdown ? "伴奏预备播放中" : "伴奏播放中"}</span>
         {latencyMs > 0 ? (
           <span className="live-latency-note">
             已补偿 {Math.round(latencyMs)} ms

@@ -585,17 +585,20 @@ button:disabled {
   text-anchor: end;
 }
 
-.pitch-segment {
+.reference-pitch-path {
+  fill: none;
+  stroke: var(--cyan);
   stroke-linecap: round;
-  stroke-width: 9;
+  stroke-linejoin: round;
+  stroke-width: 4;
 }
 
-.pitch-segment-past {
-  stroke: var(--cyan);
+.reference-pitch-past,
+.reference-pitch-live {
+  opacity: 1;
 }
 
-.pitch-segment-future {
-  stroke: var(--cyan);
+.reference-pitch-future {
   opacity: 0.34;
 }
 
@@ -1083,6 +1086,10 @@ button:disabled {
   animation: recording-pulse 1.4s ease-in-out infinite;
 }
 
+.recording-dot.is-countdown {
+  background: var(--cyan);
+}
+
 @keyframes recording-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.5; transform: scale(0.78); }
@@ -1092,9 +1099,38 @@ button:disabled {
   border-color: #293139;
 }
 
-.pitch-timeline.is-live .pitch-segment-future {
-  stroke: var(--cyan);
+.pitch-timeline.is-live .reference-pitch-live {
   opacity: 1;
+}
+
+.live-timeline-stage {
+  position: relative;
+  min-width: 0;
+}
+
+.singing-countdown {
+  position: absolute;
+  inset: 0 0 52px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  pointer-events: none;
+  background: rgb(10 14 18 / 34%);
+  text-shadow: 0 2px 18px #050709;
+}
+
+.singing-countdown strong {
+  color: var(--coral);
+  font-size: clamp(72px, 12vw, 136px);
+  font-variant-numeric: tabular-nums;
+  line-height: 0.9;
+}
+
+.singing-countdown span {
+  margin-top: 18px;
+  color: #f0f2f3;
+  font-size: clamp(16px, 2vw, 22px);
+  letter-spacing: 0.08em;
 }
 
 .user-pitch-path {
@@ -1234,7 +1270,7 @@ button:disabled {
     margin-top: 18px;
   }
 
-  .live-singing-screen .pitch-timeline.is-live {
+  .live-timeline-stage {
     grid-area: timeline;
     align-self: center;
   }
@@ -1794,6 +1830,7 @@ button:disabled {
     font-size: 15px;
   }
 
+  .live-timeline-stage,
   .live-singing-screen .pitch-timeline.is-live {
     width: 100%;
     min-width: 0;

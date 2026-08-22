@@ -1,7 +1,10 @@
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 
 import type { LivePitchPoint, ReferencePitchResponse } from "../types";
-import { centeredPitchRange } from "../utils/pitchView";
+import {
+  centeredPitchRange,
+  smoothedReferenceMidi,
+} from "../utils/pitchView";
 
 const WIDTH = 1000;
 const DEFAULT_HEIGHT = 560;
@@ -21,12 +24,6 @@ interface PitchTimelineProps {
   live?: boolean;
 }
 
-interface PitchSegment {
-  start: number;
-  end: number;
-  midi: number;
-}
-
 export function PitchTimeline({
   pitch,
   currentTime,
@@ -35,6 +32,7 @@ export function PitchTimeline({
   rangeEnd = pitch.duration_seconds,
   live = false,
 }: PitchTimelineProps) {
+  const pastClipId = `reference-past-${useId().replaceAll(":", "")}`;
   const height = live ? LIVE_HEIGHT : DEFAULT_HEIGHT;
   const sessionStart = Math.max(0, rangeStart);
   const sessionEnd = Math.max(sessionStart + 0.01, rangeEnd);
@@ -50,10 +48,6 @@ export function PitchTimeline({
     windowStart,
     windowEnd,
   );
-  const segments = useMemo(
-    () => buildSegments(pitch, windowStart, windowEnd),
-    [pitch, windowEnd, windowStart],
-  );
   const plotWidth = WIDTH - LABEL_WIDTH - RIGHT;
   const plotHeight = height - TOP - BOTTOM;
   const x = (seconds: number): number =>
@@ -61,6 +55,29 @@ export function PitchTimeline({
   const y = (midi: number): number =>
     TOP + ((midiMaximum - midi) / (midiMaximum - midiMinimum)) * plotHeight;
   const playhead = x(Math.min(Math.max(currentTime, windowStart), windowEnd));
+  const referencePath = useMemo(
+    () =>
+      buildReferencePitchPath(
+        pitch,
+        windowStart,
+        windowEnd,
+        midiMinimum,
+        midiMaximum,
+        plotWidth,
+        plotHeight,
+        windowDuration,
+      ),
+    [
+      midiMaximum,
+      midiMinimum,
+      pitch,
+      plotHeight,
+      plotWidth,
+      windowDuration,
+      windowEnd,
+      windowStart,
+    ],
+  );
   const userPaths = useMemo(
     () =>
       buildUserPitchPaths(
@@ -102,6 +119,16 @@ export function PitchTimeline({
             ? "青色为原唱人声音调，珊瑚色为你的实时音高"
             : "从分离后的原唱人声提取的音调线，播放指针随伴奏移动"}
         </title>
+        <defs>
+          <clipPath id={pastClipId}>
+            <rect
+              x={LABEL_WIDTH}
+              y={TOP - 10}
+              width={Math.max(0, playhead - LABEL_WIDTH)}
+              height={plotHeight + 20}
+            />
+          </clipPath>
+        </defs>
         <rect width={WIDTH} height={height} className="timeline-background" />
         {timeTicks.map((tick) => (
           <g key={tick.time}>
@@ -131,53 +158,23 @@ export function PitchTimeline({
             </text>
           </g>
         ))}
-        {segments.flatMap((segment, index) => {
-          const segmentY = round(y(segment.midi));
-          const startX = round(x(segment.start));
-          const endX = round(x(segment.end));
-          if (segment.end <= currentTime || live) {
-            return [
-              <line
-                key={`${index}-past`}
-                x1={startX}
-                y1={segmentY}
-                x2={endX}
-                y2={segmentY}
-                className="pitch-segment pitch-segment-past"
-              />,
-            ];
-          }
-          if (segment.start >= currentTime) {
-            return [
-              <line
-                key={`${index}-future`}
-                x1={startX}
-                y1={segmentY}
-                x2={endX}
-                y2={segmentY}
-                className="pitch-segment pitch-segment-future"
-              />,
-            ];
-          }
-          return [
-            <line
-              key={`${index}-split-past`}
-              x1={startX}
-              y1={segmentY}
-              x2={round(x(currentTime))}
-              y2={segmentY}
-              className="pitch-segment pitch-segment-past"
-            />,
-            <line
-              key={`${index}-split-future`}
-              x1={round(x(currentTime))}
-              y1={segmentY}
-              x2={endX}
-              y2={segmentY}
-              className="pitch-segment pitch-segment-future"
-            />,
-          ];
-        })}
+        {referencePath ? (
+          <path
+            d={referencePath}
+            className={`reference-pitch-path ${
+              live ? "reference-pitch-live" : "reference-pitch-future"
+            }`}
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : null}
+        {!live && referencePath ? (
+          <path
+            d={referencePath}
+            className="reference-pitch-path reference-pitch-past"
+            clipPath={`url(#${pastClipId})`}
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : null}
         {userPaths.map((path, index) => (
           <path
             key={`${path}-${index}`}
@@ -198,7 +195,7 @@ export function PitchTimeline({
       {live ? (
         <div className="live-pitch-legend" aria-hidden="true">
           <span><i className="reference-key" />原唱音调</span>
-          <span><i className="user-key" />你的音高</span>
+          <span><i className="user-key" />你的音高（八度等价）</span>
         </div>
       ) : null}
     </div>
@@ -249,12 +246,18 @@ function buildUserPitchPaths(
   return paths;
 }
 
-function buildSegments(
+function buildReferencePitchPath(
   pitch: ReferencePitchResponse,
   windowStart: number,
   windowEnd: number,
-): PitchSegment[] {
-  const stride = Math.max(1, Math.round(0.08 / pitch.hop_seconds));
+  midiMinimum: number,
+  midiMaximum: number,
+  plotWidth: number,
+  plotHeight: number,
+  windowDuration: number,
+): string {
+  const stride = Math.max(1, Math.round(0.06 / pitch.hop_seconds));
+  const smoothingRadius = Math.max(1, Math.round(0.04 / pitch.hop_seconds));
   const firstIndex = Math.max(
     0,
     Math.floor((windowStart - pitch.start_seconds) / pitch.hop_seconds),
@@ -263,43 +266,36 @@ function buildSegments(
     pitch.frames.length - 1,
     Math.ceil((windowEnd - pitch.start_seconds) / pitch.hop_seconds),
   );
-  const segments: PitchSegment[] = [];
-  let active: PitchSegment | null = null;
-  let lastTime = 0;
-
-  const flush = (): void => {
-    if (active && active.end - active.start >= 0.06) {
-      segments.push(active);
-    }
-    active = null;
-  };
+  const commands: string[] = [];
+  let lastTime: number | null = null;
+  let lastMidi: number | null = null;
 
   for (let index = firstIndex; index <= lastIndex; index += stride) {
-    const value = pitch.frames[index];
+    const value = smoothedReferenceMidi(
+      pitch.frames,
+      index,
+      smoothingRadius,
+    );
     const time = pitch.start_seconds + index * pitch.hop_seconds;
-    if (value === null) {
-      flush();
+    if (time < windowStart || time > windowEnd || value === null) {
+      lastTime = null;
+      lastMidi = null;
       continue;
     }
-    const quantized = Math.round(value * 2) / 2;
     const isContinuous =
-      active !== null &&
-      Math.abs(quantized - active.midi) <= 0.5 &&
-      time - lastTime <= pitch.hop_seconds * stride * 1.8;
-    if (isContinuous && active) {
-      active.end = Math.min(windowEnd, time + pitch.hop_seconds * stride);
-    } else {
-      flush();
-      active = {
-        start: Math.max(windowStart, time),
-        end: Math.min(windowEnd, time + pitch.hop_seconds * stride),
-        midi: quantized,
-      };
-    }
+      lastTime !== null &&
+      lastMidi !== null &&
+      time - lastTime <= pitch.hop_seconds * stride * 2.2 &&
+      Math.abs(value - lastMidi) <= 3.5;
+    const pointX =
+      LABEL_WIDTH + ((time - windowStart) / windowDuration) * plotWidth;
+    const pointY =
+      TOP + ((midiMaximum - value) / (midiMaximum - midiMinimum)) * plotHeight;
+    commands.push(`${isContinuous ? "L" : "M"}${round(pointX)},${round(pointY)}`);
     lastTime = time;
+    lastMidi = value;
   }
-  flush();
-  return segments;
+  return commands.join(" ");
 }
 
 function noteRowValues(minimum: number, maximum: number): number[] {

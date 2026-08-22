@@ -1,15 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { compensatePlaybackTime } from "../audio/latencyCalibration";
-import type { LivePitchPoint } from "../types";
+import type { LivePitchPoint, ReferencePitchResponse } from "../types";
+import {
+  foldMidiToReferenceOctave,
+  referenceMidiNearTime,
+} from "../utils/pitchView";
 
-type LiveSessionStatus = "preflight" | "requesting" | "recording" | "stopping";
+type LiveSessionStatus =
+  | "preflight"
+  | "requesting"
+  | "countdown"
+  | "recording"
+  | "stopping";
 
 interface UseLivePerformanceOptions {
   fallbackDuration: number;
+  playbackStartSeconds?: number;
   rangeStartSeconds: number;
   rangeEndSeconds: number;
   latencyMs?: number;
+  referencePitch?: ReferencePitchResponse;
   onComplete: (recording: File) => Promise<void> | void;
 }
 
@@ -35,8 +46,10 @@ const VISIBLE_PITCH_SECONDS = 22;
 export function useLivePerformance({
   fallbackDuration,
   rangeStartSeconds,
+  playbackStartSeconds = rangeStartSeconds,
   rangeEndSeconds,
   latencyMs = 0,
+  referencePitch,
   onComplete,
 }: UseLivePerformanceOptions): LivePerformanceSession {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -50,8 +63,10 @@ export function useLivePerformance({
   const stopActionRef = useRef<Promise<void> | null>(null);
   const statusRef = useRef<LiveSessionStatus>("preflight");
   const mountedRef = useRef(true);
+  const playbackStartRef = useRef(playbackStartSeconds);
   const rangeStartRef = useRef(rangeStartSeconds);
   const latencyMsRef = useRef(latencyMs);
+  const referencePitchRef = useRef(referencePitch);
   const onCompleteRef = useRef(onComplete);
   const [status, setStatus] = useState<LiveSessionStatus>("preflight");
   const [error, setError] = useState<string | null>(null);
@@ -66,15 +81,20 @@ export function useLivePerformance({
   }, []);
 
   useEffect(() => {
+    playbackStartRef.current = playbackStartSeconds;
     rangeStartRef.current = rangeStartSeconds;
     if (statusRef.current === "preflight") {
       setCurrentTime(rangeStartSeconds);
     }
-  }, [rangeStartSeconds]);
+  }, [playbackStartSeconds, rangeStartSeconds]);
 
   useEffect(() => {
     latencyMsRef.current = latencyMs;
   }, [latencyMs]);
+
+  useEffect(() => {
+    referencePitchRef.current = referencePitch;
+  }, [referencePitch]);
 
   useEffect(() => {
     onCompleteRef.current = onComplete;
@@ -98,6 +118,7 @@ export function useLivePerformance({
       recorder.stop();
     }
     recorderRef.current = null;
+    recordingResultRef.current = null;
     for (const track of streamRef.current?.getTracks() ?? []) {
       track.stop();
     }
@@ -129,6 +150,8 @@ export function useLivePerformance({
     }
     const samples = new Float32Array(analyser.fftSize);
     let lastAnalyzedAt = -ANALYSIS_INTERVAL_MS;
+    let previousMidi: number | null = null;
+    let unvoicedFrames = 0;
 
     const analyze = (timestamp: number): void => {
       if (statusRef.current !== "recording") {
@@ -138,12 +161,31 @@ export function useLivePerformance({
         lastAnalyzedAt = timestamp;
         analyser.getFloatTimeDomainData(samples);
         const frequency = pitchModule.detectPitch(samples, audioContext.sampleRate);
-        const midi = frequency === null ? null : pitchModule.frequencyToMidi(frequency);
         const playbackTime = compensatePlaybackTime(
           audio.currentTime,
           latencyMsRef.current,
           rangeStartRef.current,
         );
+        const rawMidi =
+          frequency === null ? null : pitchModule.frequencyToMidi(frequency);
+        let midi: number | null = null;
+        if (rawMidi !== null) {
+          const localReference = referencePitchRef.current
+            ? referenceMidiNearTime(referencePitchRef.current, playbackTime)
+            : null;
+          midi = foldMidiToReferenceOctave(
+            rawMidi,
+            localReference,
+            previousMidi,
+          );
+          previousMidi = midi;
+          unvoicedFrames = 0;
+        } else {
+          unvoicedFrames += 1;
+          if (unvoicedFrames >= 5) {
+            previousMidi = null;
+          }
+        }
         setCurrentTime(playbackTime);
         setCurrentMidi(midi);
         setPitchPoints((current) => {
@@ -160,6 +202,34 @@ export function useLivePerformance({
 
     animationFrameRef.current = requestAnimationFrame(analyze);
   }, []);
+
+  const startCountdown = useCallback((): void => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+    const updateCountdown = (): void => {
+      if (statusRef.current !== "countdown") {
+        return;
+      }
+      const playbackTime = Math.min(audio.currentTime, rangeStartRef.current);
+      setCurrentTime(playbackTime);
+      if (audio.currentTime >= rangeStartRef.current - 0.02) {
+        const recorder = recorderRef.current;
+        if (recorder && recorder.state === "inactive") {
+          recorder.start(1_000);
+        }
+        setCurrentTime(rangeStartRef.current);
+        setPitchPoints([]);
+        setCurrentMidi(null);
+        changeStatus("recording");
+        startAnalysis();
+        return;
+      }
+      animationFrameRef.current = requestAnimationFrame(updateCountdown);
+    };
+    animationFrameRef.current = requestAnimationFrame(updateCountdown);
+  }, [changeStatus, startAnalysis]);
 
   const start = useCallback(async (): Promise<void> => {
     const supportIssue = getLiveRecordingSupportIssue();
@@ -245,11 +315,23 @@ export function useLivePerformance({
         );
       });
 
-      audio.currentTime = rangeStartRef.current;
-      recorder.start(1_000);
+      const playbackStart = Math.min(
+        rangeStartRef.current,
+        Math.max(0, playbackStartRef.current),
+      );
+      const hasCountdown = playbackStart < rangeStartRef.current - 0.05;
+      audio.currentTime = playbackStart;
+      setCurrentTime(playbackStart);
+      if (!hasCountdown) {
+        recorder.start(1_000);
+      }
+      changeStatus(hasCountdown ? "countdown" : "recording");
       await audio.play();
-      changeStatus("recording");
-      startAnalysis();
+      if (hasCountdown) {
+        startCountdown();
+      } else {
+        startAnalysis();
+      }
     } catch (reason) {
       if (stream) {
         for (const track of stream.getTracks()) {
@@ -260,9 +342,17 @@ export function useLivePerformance({
       changeStatus("preflight");
       setError(microphoneErrorMessage(reason));
     }
-  }, [changeStatus, releaseMedia, startAnalysis]);
+  }, [changeStatus, releaseMedia, startAnalysis, startCountdown]);
 
   const performStop = useCallback(async (): Promise<void> => {
+    if (statusRef.current === "countdown") {
+      releaseMedia();
+      setCurrentTime(rangeStartRef.current);
+      setPitchPoints([]);
+      setCurrentMidi(null);
+      changeStatus("preflight");
+      return;
+    }
     if (statusRef.current !== "recording") {
       return;
     }
